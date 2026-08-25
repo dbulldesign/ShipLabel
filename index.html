@@ -1,0 +1,917 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shipping Label Sheets — S-5049G (2 × 8½ × 5½″ per page)</title>
+<style>
+  :root{
+    --desk:#20242b;
+    --desk-2:#272c35;
+    --panel:#2e343f;
+    --panel-edge:#3a414e;
+    --ink:#e8eaee;
+    --ink-dim:#9aa3b2;
+    --accent:#f5872e;
+    --accent-ink:#1d1205;
+    --warn:#ffd166;
+    --paper-shadow: 0 14px 34px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.4);
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:
+      radial-gradient(1200px 600px at 50% -10%, #2c323d 0%, var(--desk) 60%),
+      var(--desk);
+    color:var(--ink);
+    font:14px/1.45 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height:100vh;
+  }
+
+  /* ================= Toolbar ================= */
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:linear-gradient(var(--panel), var(--desk-2));
+    border-bottom:1px solid var(--panel-edge);
+    padding:10px 16px;
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+  }
+  .brand{display:flex; flex-direction:column; margin-right:8px; user-select:none;}
+  .brand b{font-size:14px; letter-spacing:.06em; text-transform:uppercase;}
+  .brand span{font-size:11px; color:var(--ink-dim); letter-spacing:.04em;}
+  .group{
+    display:flex; align-items:center; gap:4px;
+    background:var(--desk-2);
+    border:1px solid var(--panel-edge);
+    border-radius:var(--radius);
+    padding:4px;
+  }
+  button, select{
+    appearance:none; background:transparent; color:var(--ink);
+    border:1px solid transparent; border-radius:7px;
+    padding:6px 10px; font:inherit; cursor:pointer; line-height:1;
+  }
+  button:hover{background:rgba(255,255,255,.07);}
+  button:active{transform:translateY(1px);}
+  button:focus-visible, select:focus-visible, .toggle input:focus-visible + .pill{
+    outline:2px solid var(--accent); outline-offset:1px;
+  }
+  button.is-on{background:var(--accent); color:var(--accent-ink); font-weight:700;}
+  .b{font-weight:800;} .i{font-style:italic;} .u{text-decoration:underline;}
+  select{background:var(--desk-2); border:1px solid var(--panel-edge); padding:6px 8px;}
+  select option{background:var(--panel); color:var(--ink);}
+  .spacer{flex:1;}
+  .print-btn{
+    background:var(--accent); color:var(--accent-ink);
+    font-weight:800; letter-spacing:.03em;
+    padding:8px 16px; border-radius:8px;
+  }
+  .print-btn:hover{filter:brightness(1.08); background:var(--accent);}
+  .toggle{display:flex; align-items:center; gap:8px; padding:0 6px; cursor:pointer; user-select:none;}
+  .toggle input{position:absolute; opacity:0; width:1px; height:1px;}
+  .toggle .pill{
+    width:34px; height:19px; border-radius:20px;
+    background:#4a5262; position:relative; transition:background .15s; flex:none;
+  }
+  .toggle .pill::after{
+    content:""; position:absolute; top:2px; left:2px;
+    width:15px; height:15px; border-radius:50%;
+    background:#fff; transition:left .15s;
+  }
+  .toggle input:checked + .pill{background:var(--accent);}
+  .toggle input:checked + .pill::after{left:17px;}
+  .toggle small{color:var(--ink-dim); font-size:12px;}
+
+  /* ================= Layout ================= */
+  .app{
+    display:flex; gap:0; align-items:stretch;
+    min-height:calc(100vh - 60px);
+  }
+  .entries-panel{
+    flex:1 1 58%;
+    min-width:320px;
+    padding:18px 18px 90px;
+  }
+  .preview-panel{
+    flex:0 0 380px;
+    border-left:1px solid var(--panel-edge);
+    background:rgba(0,0,0,.16);
+    padding:14px 14px 90px;
+    overflow-y:auto;
+    max-height:calc(100vh - 60px);
+    position:sticky; top:60px;
+  }
+  body.expanded .entries-panel{display:none;}
+  body.expanded .preview-panel{flex:1 1 100%; border-left:none;}
+
+  .panel-head{
+    display:flex; align-items:center; gap:10px;
+    margin:2px 2px 14px;
+  }
+  .panel-head h2{
+    margin:0; font-size:12px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--ink-dim); font-weight:700;
+  }
+  .count-chip{
+    background:var(--desk-2); border:1px solid var(--panel-edge);
+    border-radius:20px; padding:3px 10px; font-size:11px; color:var(--ink-dim);
+  }
+  .add-btn{
+    background:var(--accent); color:var(--accent-ink);
+    font-weight:800; border-radius:8px; padding:7px 14px;
+  }
+  .add-btn:hover{filter:brightness(1.08); background:var(--accent);}
+
+  /* ================= Entry cards ================= */
+  .entry{
+    background:var(--panel);
+    border:1px solid var(--panel-edge);
+    border-radius:12px;
+    margin-bottom:14px;
+    overflow:hidden;
+  }
+  .entry.focused{border-color:var(--accent);}
+  .entry-bar{
+    display:flex; align-items:center; gap:6px;
+    padding:7px 10px;
+    background:var(--desk-2);
+    border-bottom:1px solid var(--panel-edge);
+    font-size:12px; color:var(--ink-dim);
+  }
+  .entry-num{font-weight:800; color:var(--ink); letter-spacing:.06em;}
+  .copies-wrap{display:flex; align-items:center; gap:5px; margin-left:8px;}
+  .copies-wrap input{
+    width:52px; background:var(--desk); color:var(--ink);
+    border:1px solid var(--panel-edge); border-radius:6px;
+    padding:4px 6px; font:inherit; text-align:center;
+  }
+  .entry-bar .tools{margin-left:auto; display:flex; gap:2px;}
+  .entry-bar .tools button{padding:5px 8px; font-size:13px;}
+  .entry-editor{
+    background:#fff; color:#000;
+    min-height:1.6in;
+    padding:16px 20px;
+    outline:none;
+    font-family:Arial, Helvetica, sans-serif;
+    font-size:26pt; font-weight:bold;
+    text-align:center; line-height:1.25;
+    word-wrap:break-word;
+    zoom:0.55;            /* shows big label type at a comfortable card size */
+  }
+  .entry-editor:empty::before{
+    content:"Type this label's text…";
+    color:#b9bec7; font-weight:normal; font-size:18pt;
+  }
+  .empty-state{
+    border:2px dashed var(--panel-edge);
+    border-radius:12px;
+    padding:40px 20px;
+    text-align:center; color:var(--ink-dim);
+  }
+
+  /* ================= Preview pages ================= */
+  .page-wrap{transform-origin:top left; margin:0 auto;}
+  .page{
+    width:8.5in; height:11in;
+    background:#fff; color:#000;
+    box-shadow:var(--paper-shadow);
+    position:relative;
+    display:flex; flex-direction:column;
+  }
+  .page + .page{margin-top:0;}
+  .page-gap{height:18px;}
+  .plabel{height:5.5in; flex:none; position:relative; display:flex;}
+  .plabel.v-center .pcontent{display:flex; flex-direction:column; justify-content:center;}
+  .pcontent{
+    flex:1; margin:0.45in 0.5in; overflow:hidden;
+    font-family:Arial, Helvetica, sans-serif;
+    font-size:26pt; font-weight:bold;
+    text-align:center; line-height:1.25;
+    word-wrap:break-word;
+  }
+  .perf{
+    position:absolute; top:50%; left:0; right:0;
+    border-top:2px dashed #c4c9d2; transform:translateY(-1px);
+  }
+  .page-tag{
+    position:absolute; bottom:-0px; right:6px;
+    transform:translateY(120%);
+    font-size:11px; color:var(--ink-dim); letter-spacing:.08em;
+  }
+  .slot-num{
+    position:absolute; top:8px; left:10px;
+    font:10px/1 -apple-system,"Segoe UI",Roboto,sans-serif;
+    letter-spacing:.14em; text-transform:uppercase; color:#aab1bd;
+    pointer-events:none;
+  }
+  .overflow-flag{
+    position:absolute; top:6px; right:10px;
+    background:var(--warn); color:#4a3800;
+    font:11px/1 -apple-system,"Segoe UI",Roboto,sans-serif; font-weight:700;
+    padding:5px 9px; border-radius:6px; display:none;
+  }
+  .plabel.overflowing .overflow-flag{display:block;}
+
+  .print-group .range-label{font-size:12px; color:var(--ink-dim); padding:0 2px 0 6px;}
+  .print-group input{
+    width:70px; background:var(--desk); color:var(--ink);
+    border:1px solid var(--panel-edge); border-radius:7px;
+    padding:6px 8px; font:inherit; text-align:center;
+  }
+  .print-group input::placeholder{color:var(--ink-dim);}
+
+  .page-bar{
+    display:flex; align-items:center; gap:8px;
+    margin:0 0 6px 2px;
+    font-size:11px; color:var(--ink-dim);
+    letter-spacing:.08em; text-transform:uppercase;
+  }
+  .page-bar button{
+    padding:4px 9px; font-size:12px; text-transform:none; letter-spacing:0;
+    background:var(--desk-2); border:1px solid var(--panel-edge);
+  }
+  .page-bar button:hover{border-color:var(--accent); color:var(--accent);}
+
+  /* ================= Print ================= */
+  @page{ size:letter; margin:0; }
+  @media print{
+    body{background:#fff;}
+    .topbar, .entries-panel, .panel-head, .perf, .slot-num,
+    .overflow-flag, .page-tag, .page-gap, .page-bar{display:none !important;}
+    .page-wrap.no-print{display:none !important;}
+    .app{display:block; min-height:0;}
+    .preview-panel{
+      position:static; max-height:none; overflow:visible;
+      flex:none; border:none; background:#fff; padding:0;
+    }
+    .page-wrap{transform:none !important; width:auto !important; height:auto !important; margin:0;}
+    .page{
+      box-shadow:none;
+      width:8.5in; height:11in;
+      overflow:hidden;
+      page-break-after:always;
+      break-inside:avoid;
+    }
+    .page:last-child{page-break-after:auto;}
+    .page-wrap.last-print .page{page-break-after:auto;}
+    .plabel{height:50%; overflow:hidden;}
+    .pcontent:empty::before{content:"";}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <b>Label Sheets</b>
+    <span>S-5049G · two 8½ × 5½″ labels per page</span>
+  </div>
+
+  <div class="group" role="toolbar" aria-label="Text style">
+    <button class="b" data-cmd="bold" title="Bold (Ctrl+B)">B</button>
+    <button class="i" data-cmd="italic" title="Italic (Ctrl+I)">I</button>
+    <button class="u" data-cmd="underline" title="Underline (Ctrl+U)">U</button>
+  </div>
+
+  <div class="group" aria-label="Font">
+    <select id="fontFamily" title="Font — applies to highlighted text, or the whole label if nothing is highlighted">
+      <option value="Arial, Helvetica, sans-serif" selected>Arial</option>
+      <option value="'Times New Roman', Times, serif">Times New Roman</option>
+      <option value="Georgia, serif">Georgia</option>
+      <option value="'Courier New', monospace">Courier New</option>
+      <option value="Impact, 'Arial Black', sans-serif">Impact</option>
+    </select>
+    <select id="fontSize" title="Font size (pt) — applies to highlighted text, or the whole label if nothing is highlighted">
+      <option>14</option><option>16</option><option>18</option><option>20</option>
+      <option>22</option><option>24</option><option selected>26</option><option>28</option>
+      <option>32</option><option>36</option><option>40</option><option>48</option>
+      <option>56</option><option>64</option><option>72</option>
+    </select>
+  </div>
+
+  <div class="group" role="toolbar" aria-label="Alignment">
+    <button data-cmd="justifyLeft" title="Align left">⯇</button>
+    <button data-cmd="justifyCenter" title="Align center">≡</button>
+    <button data-cmd="justifyRight" title="Align right">⯈</button>
+    <button id="vCenterBtn" title="Center this label's text vertically on the printed label">↕ Middle</button>
+  </div>
+
+  <div class="group" aria-label="Save and load">
+    <button id="saveBtn" title="Download all labels as a file you can re-open later">💾 Save</button>
+    <button id="openBtn" title="Upload a previously saved label file">📂 Open</button>
+    <input type="file" id="openInput" accept=".json,application/json" style="display:none">
+  </div>
+
+  <label class="toggle" title="Automatically shrink text so it never runs past the label edge">
+    <input type="checkbox" id="fitToggle" checked>
+    <span class="pill" aria-hidden="true"></span>
+    <small>Shrink to fit</small>
+  </label>
+
+  <div class="spacer"></div>
+  <div class="group print-group" aria-label="Print">
+    <label class="range-label" for="printRange">Pages</label>
+    <input type="text" id="printRange" placeholder="All" title="Which sheets to print or export. Examples:  All  ·  2  ·  1,3  ·  2-4">
+    <button id="pdfBtn" title="Save the selected sheets as a PDF file">⬇ PDF</button>
+    <button class="print-btn" id="printBtn">🖨 Print</button>
+  </div>
+</header>
+
+<main class="app">
+  <section class="entries-panel">
+    <div class="panel-head">
+      <h2>Labels</h2>
+      <span class="count-chip" id="entryCount">0 labels</span>
+      <div class="spacer"></div>
+      <button class="add-btn" id="addBtn">＋ Add label</button>
+    </div>
+    <div id="entriesList"></div>
+  </section>
+
+  <aside class="preview-panel" id="previewPanel">
+    <div class="panel-head">
+      <h2>Print preview</h2>
+      <span class="count-chip" id="pageCount">0 pages</span>
+      <div class="spacer"></div>
+      <button id="expandBtn" title="Expand the preview to full width">⛶ Expand</button>
+    </div>
+    <div id="pages"></div>
+  </aside>
+</main>
+
+<script>
+(function(){
+  "use strict";
+  const entriesList = document.getElementById("entriesList");
+  const pagesEl     = document.getElementById("pages");
+  const previewPanel= document.getElementById("previewPanel");
+  const fitToggle   = document.getElementById("fitToggle");
+  const entryCount  = document.getElementById("entryCount");
+  const pageCount   = document.getElementById("pageCount");
+  let activeEditor  = null;
+  let savedRange    = null;
+
+  try { document.execCommand("styleWithCSS", false, true); } catch(e){}
+  try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch(e){}
+
+  /* ================= Entries ================= */
+  function makeEntry(data){
+    data = data || {};
+    const entry = document.createElement("div");
+    entry.className = "entry";
+    if (data.vCenter) entry.dataset.vcenter = "1";
+
+    const bar = document.createElement("div");
+    bar.className = "entry-bar";
+    bar.innerHTML =
+      '<span class="entry-num"></span>' +
+      '<span class="copies-wrap">× <input type="number" min="1" max="99" value="' +
+        (parseInt(data.copies,10) >= 1 ? Math.min(parseInt(data.copies,10),99) : 1) +
+      '" title="How many copies of this label to print"> copies</span>' +
+      '<span class="tools">' +
+        '<button data-act="up" title="Move up">↑</button>' +
+        '<button data-act="down" title="Move down">↓</button>' +
+        '<button data-act="dup" title="Duplicate this label">⧉</button>' +
+        '<button data-act="del" title="Delete this label">✕</button>' +
+      '</span>';
+
+    const ed = document.createElement("div");
+    ed.className = "entry-editor";
+    ed.contentEditable = "true";
+    ed.spellcheck = false;
+    ed.innerHTML = sanitizeHTML(data.html || "");
+    if (data.fontSize)   ed.style.fontSize   = data.fontSize;
+    if (data.fontFamily) ed.style.fontFamily = data.fontFamily;
+
+    entry.appendChild(bar);
+    entry.appendChild(ed);
+
+    ed.addEventListener("focus", () => {
+      activeEditor = ed;
+      document.querySelectorAll(".entry").forEach(el =>
+        el.classList.toggle("focused", el === entry));
+      syncVBtn();
+    });
+    ed.addEventListener("input", queueRender);
+    ed.addEventListener("paste", e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+      document.execCommand("insertText", false, text);
+    });
+
+    bar.querySelector("input").addEventListener("input", queueRender);
+    bar.addEventListener("click", e => {
+      const act = e.target && e.target.dataset && e.target.dataset.act;
+      if (!act) return;
+      if (act === "del"){
+        if (entry.querySelector(".entry-editor").innerText.trim() &&
+            !confirm("Delete this label?")) return;
+        if (activeEditor === ed) activeEditor = null;
+        entry.remove();
+      }
+      if (act === "dup"){
+        const copy = makeEntry(entryData(entry));
+        entry.after(copy);
+      }
+      if (act === "up"   && entry.previousElementSibling) entry.previousElementSibling.before(entry);
+      if (act === "down" && entry.nextElementSibling)     entry.nextElementSibling.after(entry);
+      queueRender();
+    });
+
+    return entry;
+  }
+
+  function entryData(entry){
+    const ed = entry.querySelector(".entry-editor");
+    return {
+      html: ed.innerHTML,
+      fontSize: ed.style.fontSize || "",
+      fontFamily: ed.style.fontFamily || "",
+      vCenter: entry.dataset.vcenter === "1",
+      copies: parseInt(entry.querySelector(".copies-wrap input").value, 10) || 1
+    };
+  }
+  function allEntries(){ return Array.from(entriesList.querySelectorAll(".entry")); }
+
+  document.getElementById("addBtn").addEventListener("click", () => {
+    const entry = makeEntry();
+    entriesList.appendChild(entry);
+    entry.querySelector(".entry-editor").focus();
+    queueRender();
+  });
+
+  /* ================= Selection memory ================= */
+  document.addEventListener("selectionchange", () => {
+    const sel = window.getSelection();
+    if (sel.rangeCount){
+      const r = sel.getRangeAt(0);
+      const host = r.commonAncestorContainer;
+      const inEditor = document.querySelector(".entry-editor") &&
+        Array.from(document.querySelectorAll(".entry-editor")).some(ed => ed.contains(host));
+      if (inEditor) savedRange = r.cloneRange();
+    }
+    refreshToolbarState();
+  });
+  function restoreSelection(){
+    if (!activeEditor) return false;
+    activeEditor.focus();
+    if (savedRange && activeEditor.contains(savedRange.commonAncestorContainer)){
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(savedRange);
+      return !savedRange.collapsed;
+    }
+    return false;
+  }
+  function ensureActive(){
+    if (activeEditor && document.contains(activeEditor)) return true;
+    const first = document.querySelector(".entry-editor");
+    if (first){ first.focus(); return true; }
+    return false;
+  }
+
+  /* ================= Toolbar ================= */
+  document.querySelectorAll("[data-cmd]").forEach(btn => {
+    btn.addEventListener("mousedown", e => e.preventDefault());
+    btn.addEventListener("click", () => {
+      if (!ensureActive()) return;
+      activeEditor.focus();
+      document.execCommand(btn.dataset.cmd, false, null);
+      refreshToolbarState();
+      queueRender();
+    });
+  });
+  function refreshToolbarState(){
+    const map = { bold:".b", italic:".i", underline:".u",
+                  justifyLeft:'[data-cmd="justifyLeft"]',
+                  justifyCenter:'[data-cmd="justifyCenter"]',
+                  justifyRight:'[data-cmd="justifyRight"]' };
+    for (const cmd in map){
+      const el = document.querySelector(".topbar " + map[cmd]);
+      if (!el) continue;
+      let on = false;
+      try { on = document.queryCommandState(cmd); } catch(e){}
+      el.classList.toggle("is-on", on);
+    }
+  }
+
+  const sizeSel = document.getElementById("fontSize");
+  sizeSel.addEventListener("change", () => {
+    if (!ensureActive()) return;
+    const pt = sizeSel.value + "pt";
+    if (restoreSelection()){
+      document.execCommand("fontSize", false, "7");
+      activeEditor.querySelectorAll('font[size="7"]').forEach(f => {
+        const span = document.createElement("span");
+        span.style.fontSize = pt;
+        span.innerHTML = f.innerHTML;
+        f.replaceWith(span);
+      });
+    } else {
+      activeEditor.style.fontSize = pt;
+    }
+    queueRender();
+  });
+
+  const famSel = document.getElementById("fontFamily");
+  famSel.addEventListener("change", () => {
+    if (!ensureActive()) return;
+    if (restoreSelection()){
+      document.execCommand("fontName", false, famSel.value);
+    } else {
+      activeEditor.style.fontFamily = famSel.value;
+    }
+    queueRender();
+  });
+
+  const vBtn = document.getElementById("vCenterBtn");
+  vBtn.addEventListener("mousedown", e => e.preventDefault());
+  vBtn.addEventListener("click", () => {
+    if (!ensureActive()) return;
+    const entry = activeEditor.closest(".entry");
+    entry.dataset.vcenter = entry.dataset.vcenter === "1" ? "" : "1";
+    syncVBtn();
+    queueRender();
+  });
+  function syncVBtn(){
+    const entry = activeEditor && activeEditor.closest(".entry");
+    vBtn.classList.toggle("is-on", !!(entry && entry.dataset.vcenter === "1"));
+  }
+
+  /* ================= Preview build ================= */
+  let renderTimer = null;
+  function queueRender(){
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(render, 90);
+  }
+
+  function flattenedLabels(){
+    const out = [];
+    allEntries().forEach((entry, idx) => {
+      const d = entryData(entry);
+      for (let i = 0; i < d.copies; i++) out.push({ d: d, num: idx + 1 });
+    });
+    return out;
+  }
+
+  function render(){
+    const entries = allEntries();
+    entries.forEach((e, i) => e.querySelector(".entry-num").textContent = "LABEL " + (i+1));
+    entryCount.textContent = entries.length + (entries.length === 1 ? " label" : " labels");
+
+    if (!entries.length){
+      entriesList.parentElement.querySelector(".empty-state")?.remove();
+      const empty = document.createElement("div");
+      empty.className = "empty-state";
+      empty.textContent = "No labels yet — click “＋ Add label” to start.";
+      entriesList.appendChild ? entriesList.after(empty) : null;
+    } else {
+      document.querySelector(".empty-state")?.remove();
+    }
+
+    const labels = flattenedLabels();
+    const pageTotal = Math.max(1, Math.ceil(labels.length / 2));
+    pageCount.textContent = pageTotal + (pageTotal === 1 ? " page" : " pages");
+
+    pagesEl.innerHTML = "";
+    for (let p = 0; p < pageTotal; p++){
+      const wrap = document.createElement("div");
+      wrap.className = "page-wrap";
+      wrap.dataset.page = p + 1;
+
+      const bar = document.createElement("div");
+      bar.className = "page-bar";
+      bar.innerHTML = '<span>Sheet ' + (p+1) + ' of ' + pageTotal + '</span>';
+      const oneBtn = document.createElement("button");
+      oneBtn.textContent = "🖨 Print this sheet";
+      oneBtn.addEventListener("click", () => printPages(new Set([p+1])));
+      bar.appendChild(oneBtn);
+
+      const page = document.createElement("div");
+      page.className = "page";
+
+      for (let s = 0; s < 2; s++){
+        const item = labels[p*2 + s];
+        const lab = document.createElement("div");
+        lab.className = "plabel";
+        if (item && item.d.vCenter) lab.classList.add("v-center");
+        lab.innerHTML =
+          '<span class="slot-num">' + (item ? "Label " + item.num : "Empty") + '</span>' +
+          '<span class="overflow-flag">Over the edge — shrink or trim</span>';
+        const content = document.createElement("div");
+        content.className = "pcontent";
+        if (item){
+          content.innerHTML = item.d.html;
+          if (item.d.fontSize)   content.style.fontSize   = item.d.fontSize;
+          if (item.d.fontFamily) content.style.fontFamily = item.d.fontFamily;
+        }
+        lab.appendChild(content);
+        page.appendChild(lab);
+      }
+      const perf = document.createElement("div");
+      perf.className = "perf";
+      page.appendChild(perf);
+
+      pagesEl.appendChild(bar);
+      wrap.appendChild(page);
+      pagesEl.appendChild(wrap);
+      const gap = document.createElement("div");
+      gap.className = "page-gap";
+      pagesEl.appendChild(gap);
+    }
+    scalePages();
+    fitAll();
+  }
+
+  function scalePages(){
+    const avail = previewPanel.clientWidth - 30;
+    document.querySelectorAll(".page-wrap").forEach(wrap => {
+      const page = wrap.firstElementChild;
+      const s = Math.min(avail / page.offsetWidth, 1);
+      wrap.style.transform = "scale(" + s + ")";
+      wrap.style.width  = page.offsetWidth + "px";
+      wrap.style.height = (page.offsetHeight * s) + "px";
+    });
+  }
+  window.addEventListener("resize", scalePages);
+
+  function fitAll(){
+    document.querySelectorAll(".plabel").forEach(lab => {
+      const c = lab.querySelector(".pcontent");
+      c.style.zoom = "";
+      const over = c.scrollHeight > c.clientHeight + 1;
+      if (over && fitToggle.checked){
+        let z = c.clientHeight / c.scrollHeight;
+        z = Math.max(z * 0.985, 0.25);
+        c.style.zoom = z.toFixed(3);
+      }
+      const stillOver = c.scrollHeight > c.clientHeight + 1;
+      lab.classList.toggle("overflowing", stillOver && !fitToggle.checked);
+    });
+  }
+  fitToggle.addEventListener("change", fitAll);
+
+  /* ================= Expand preview ================= */
+  const expandBtn = document.getElementById("expandBtn");
+  expandBtn.addEventListener("click", () => {
+    document.body.classList.toggle("expanded");
+    const on = document.body.classList.contains("expanded");
+    expandBtn.textContent = on ? "⛶ Collapse" : "⛶ Expand";
+    expandBtn.classList.toggle("is-on", on);
+    scalePages();
+  });
+
+  /* ================= Save / Open ================= */
+  function sheetData(){
+    return {
+      app: "s5049g-label-sheet",
+      version: 2,
+      savedAt: new Date().toISOString(),
+      entries: allEntries().map(entryData)
+    };
+  }
+  function suggestedName(){
+    const first = allEntries()[0];
+    const firstLine = first
+      ? ((first.querySelector(".entry-editor").innerText || "").split("\n").find(l => l.trim()) || "blank")
+      : "blank";
+    const slug = firstLine.trim().slice(0,30).replace(/[^a-z0-9]+/gi,"-").replace(/^-+|-+$/g,"") || "label";
+    const d = new Date(), pad = n => String(n).padStart(2,"0");
+    return "labels_" + slug + "_" + d.getFullYear() + "-" + pad(d.getMonth()+1) + "-" + pad(d.getDate()) + ".json";
+  }
+  document.getElementById("saveBtn").addEventListener("click", () => {
+    const blob = new Blob([JSON.stringify(sheetData(), null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = suggestedName();
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  });
+
+  const openInput = document.getElementById("openInput");
+  document.getElementById("openBtn").addEventListener("click", () => {
+    openInput.value = "";
+    openInput.click();
+  });
+  openInput.addEventListener("change", () => {
+    const file = openInput.files && openInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const data = JSON.parse(reader.result);
+        let list = null;
+        if (data.app === "s5049g-label-sheet" && Array.isArray(data.entries)) list = data.entries;
+        else if (data.app === "s5049g-label-sheet" && Array.isArray(data.labels))
+          list = data.labels.filter(L => (L.html || "").trim()); // old single-sheet files
+        if (!list) throw new Error("wrong format");
+        entriesList.innerHTML = "";
+        activeEditor = null;
+        list.forEach(L => entriesList.appendChild(makeEntry(L)));
+        queueRender();
+      }catch(err){
+        alert("That file doesn't look like a saved label file from this app.");
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  /* ================= Sanitize loaded HTML ================= */
+  function sanitizeHTML(html){
+    const allowedTags = new Set(["DIV","SPAN","BR","B","STRONG","I","EM","U","FONT","P"]);
+    const tpl = document.createElement("template");
+    tpl.innerHTML = html || "";
+    (function walk(node){
+      Array.from(node.children).forEach(el => {
+        walk(el);
+        if (!allowedTags.has(el.tagName)){
+          el.replaceWith(...el.childNodes);
+          return;
+        }
+        Array.from(el.attributes).forEach(attr => {
+          if (attr.name === "style"){
+            const ok = ["font-size","font-family","font-weight","font-style",
+                        "text-decoration","text-align","color"];
+            const kept = attr.value.split(";").map(s => s.trim())
+              .filter(s => ok.some(p => s.toLowerCase().startsWith(p + ":")))
+              .join("; ");
+            if (kept) el.setAttribute("style", kept); else el.removeAttribute("style");
+          } else if (!(el.tagName === "FONT" && attr.name.toLowerCase() === "face")){
+            el.removeAttribute(attr.name);
+          }
+        });
+      });
+    })(tpl.content);
+    return tpl.innerHTML;
+  }
+
+  /* ================= Print: all / one / selection ================= */
+  const rangeInput = document.getElementById("printRange");
+
+  function parseRange(str, total){
+    str = (str || "").trim().toLowerCase();
+    if (!str || str === "all") return null;            // null = all pages
+    const set = new Set();
+    for (const raw of str.split(",")){
+      const part = raw.trim();
+      if (!part) continue;
+      const m = part.match(/^(\d+)\s*-\s*(\d+)$/);
+      if (m){
+        let a = parseInt(m[1],10), b = parseInt(m[2],10);
+        if (a > b) [a,b] = [b,a];
+        for (let n = a; n <= b; n++) if (n >= 1 && n <= total) set.add(n);
+      } else if (/^\d+$/.test(part)){
+        const n = parseInt(part,10);
+        if (n >= 1 && n <= total) set.add(n);
+      } else {
+        return undefined;                              // undefined = bad input
+      }
+    }
+    return set.size ? set : undefined;
+  }
+
+  function printPages(selection){
+    render();
+    setTimeout(() => {
+      const wraps = Array.from(document.querySelectorAll(".page-wrap"));
+      let lastVisible = null;
+      wraps.forEach(w => {
+        const n = parseInt(w.dataset.page, 10);
+        const show = !selection || selection.has(n);
+        w.classList.toggle("no-print", !show);
+        w.classList.remove("last-print");
+        if (show) lastVisible = w;
+      });
+      if (lastVisible) lastVisible.classList.add("last-print");
+      window.print();
+    }, 120);
+  }
+  window.addEventListener("afterprint", () => {
+    document.querySelectorAll(".page-wrap").forEach(w =>
+      w.classList.remove("no-print", "last-print"));
+  });
+
+  document.getElementById("printBtn").addEventListener("click", () => {
+    const total = document.querySelectorAll(".page-wrap").length || 1;
+    const sel = parseRange(rangeInput.value, total);
+    if (sel === undefined){
+      alert('Couldn\'t read that page selection. Try things like:  All  ·  2  ·  1,3  ·  2-4');
+      rangeInput.focus();
+      return;
+    }
+    printPages(sel);
+  });
+  window.addEventListener("beforeprint", fitAll);
+
+  /* ================= Export to PDF ================= */
+  const pdfBtn = document.getElementById("pdfBtn");
+  let libsPromise = null;
+  function loadScript(src){
+    return new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload = res;
+      s.onerror = () => rej(new Error("Couldn't load " + src));
+      document.head.appendChild(s);
+    });
+  }
+  function ensureLibs(){
+    if (!libsPromise){
+      libsPromise = Promise.all([
+        loadScript("https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
+        loadScript("https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js")
+      ]).catch(err => { libsPromise = null; throw err; });
+    }
+    return libsPromise;
+  }
+
+  // html2canvas can't capture CSS zoom (used by shrink-to-fit),
+  // so recreate the same shrink with a transform for the snapshot.
+  function convertZoomForCapture(pageClone){
+    pageClone.querySelectorAll(".pcontent").forEach(c => {
+      const z = parseFloat(c.style.zoom);
+      if (z && z < 1){
+        c.style.zoom = "";
+        const inner = document.createElement("div");
+        while (c.firstChild) inner.appendChild(c.firstChild);
+        inner.style.width = (100 / z) + "%";
+        inner.style.transform = "scale(" + z + ")";
+        inner.style.transformOrigin = "top left";
+        c.appendChild(inner);
+      }
+    });
+  }
+
+  function pdfName(selection){
+    let base = suggestedName().replace(/\.json$/, "");
+    if (selection){
+      base += "_sheets-" + Array.from(selection).sort((a,b) => a-b).join("-");
+    }
+    return base + ".pdf";
+  }
+
+  async function exportPDF(selection){
+    render();
+    await new Promise(r => setTimeout(r, 130));
+    pdfBtn.disabled = true;
+    const oldText = pdfBtn.textContent;
+    pdfBtn.textContent = "⏳ Building…";
+    const holder = document.createElement("div");
+    holder.style.cssText = "position:fixed;left:-12000px;top:0;background:#fff;";
+    document.body.appendChild(holder);
+    try{
+      await ensureLibs();
+      const wraps = Array.from(document.querySelectorAll(".page-wrap"))
+        .filter(w => !selection || selection.has(parseInt(w.dataset.page, 10)));
+      if (!wraps.length){
+        alert("No sheets match that page selection.");
+        return;
+      }
+      const jsPDF = window.jspdf.jsPDF;
+      const pdf = new jsPDF({ unit:"in", format:"letter", orientation:"portrait" });
+      for (let i = 0; i < wraps.length; i++){
+        const clone = wraps[i].querySelector(".page").cloneNode(true);
+        clone.style.boxShadow = "none";
+        clone.querySelectorAll(".perf, .slot-num, .overflow-flag").forEach(n => n.remove());
+        convertZoomForCapture(clone);
+        holder.innerHTML = "";
+        holder.appendChild(clone);
+        const canvas = await window.html2canvas(clone, {
+          scale: 2, backgroundColor: "#ffffff", logging: false
+        });
+        if (i > 0) pdf.addPage("letter", "portrait");
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 8.5, 11);
+      }
+      pdf.save(pdfName(selection));
+    }catch(err){
+      alert("PDF export failed: " + (err && err.message ? err.message : err) +
+            "\nYou can also use Print and choose “Save as PDF”.");
+    }finally{
+      holder.remove();
+      pdfBtn.disabled = false;
+      pdfBtn.textContent = oldText;
+    }
+  }
+
+  pdfBtn.addEventListener("click", () => {
+    const total = document.querySelectorAll(".page-wrap").length || 1;
+    const sel = parseRange(rangeInput.value, total);
+    if (sel === undefined){
+      alert('Couldn\'t read that page selection. Try things like:  All  ·  2  ·  1,3  ·  2-4');
+      rangeInput.focus();
+      return;
+    }
+    exportPDF(sel);
+  });
+
+  /* ================= Init ================= */
+  entriesList.appendChild(makeEntry());
+  render();
+  window.addEventListener("load", () => { scalePages(); fitAll(); });
+})();
+</script>
+</body>
+</html>
