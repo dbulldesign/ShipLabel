@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Shipping Label Sheets — S-5049G (2 × 8½ × 5½″ per page)</title>
+<title>Shipping Label Sheets — choose your label type</title>
+<style id="pageStyle">@page{ size:8.5in 11in; margin:0; }</style>
 <style>
   :root{
     --desk:#20242b;
@@ -150,18 +151,23 @@
   .entry-bar .tools button{padding:5px 8px; font-size:13px;}
   .entry-editor{
     background:#fff; color:#000;
-    min-height:1.6in;
-    padding:16px 20px;
+    /* a scale model of the real label: true inches, shrunk by --ed-zoom,
+       so what fits on the card is what fits on the label */
+    width:var(--ed-w, 8.5in);
+    min-height:var(--ed-h, 5.5in);
+    padding:var(--ed-pad-y, 0.45in) var(--ed-pad-x, 0.5in);
+    margin:12px auto;
+    box-shadow:0 2px 10px rgba(0,0,0,.35);
     outline:none;
     font-family:Arial, Helvetica, sans-serif;
-    font-size:26pt; font-weight:bold;
+    font-size:var(--ed-font, 26pt); font-weight:bold;
     text-align:center; line-height:1.25;
     word-wrap:break-word;
-    zoom:0.55;            /* shows big label type at a comfortable card size */
+    zoom:var(--ed-zoom, 0.64);
   }
   .entry-editor:empty::before{
     content:"Type this label's text…";
-    color:#b9bec7; font-weight:normal; font-size:18pt;
+    color:#b9bec7; font-weight:normal; font-size:60%;
   }
   .empty-state{
     border:2px dashed var(--panel-edge);
@@ -173,27 +179,28 @@
   /* ================= Preview pages ================= */
   .page-wrap{transform-origin:top left; margin:0 auto;}
   .page{
-    width:8.5in; height:11in;
     background:#fff; color:#000;
     box-shadow:var(--paper-shadow);
-    position:relative;
-    display:flex; flex-direction:column;
+    position:relative; overflow:hidden;
   }
   .page + .page{margin-top:0;}
   .page-gap{height:18px;}
-  .plabel{height:5.5in; flex:none; position:relative; display:flex;}
+  /* Each label is placed with inline left/top/width/height from the stock table. */
+  .plabel{position:absolute; display:flex; overflow:hidden;}
   .plabel.v-center .pcontent{display:flex; flex-direction:column; justify-content:center;}
   .pcontent{
-    flex:1; margin:0.45in 0.5in; overflow:hidden;
+    flex:1; overflow:hidden;
     font-family:Arial, Helvetica, sans-serif;
-    font-size:26pt; font-weight:bold;
+    font-weight:bold;
     text-align:center; line-height:1.25;
     word-wrap:break-word;
   }
-  .perf{
-    position:absolute; top:50%; left:0; right:0;
-    border-top:2px dashed #c4c9d2; transform:translateY(-1px);
+  .cut{                     /* on-screen guide showing where the label edges are */
+    position:absolute; inset:0;
+    border:1px dashed #c4c9d2; pointer-events:none;
   }
+  .plabel.tiny .slot-num{display:none;}
+  .plabel.tiny .overflow-flag{font-size:9px; padding:3px 5px;}
   .page-tag{
     position:absolute; bottom:-0px; right:6px;
     transform:translateY(120%);
@@ -213,7 +220,32 @@
   }
   .plabel.overflowing .overflow-flag{display:block;}
 
-  .print-group .range-label{font-size:12px; color:var(--ink-dim); padding:0 2px 0 6px;}
+  .field-label, .print-group .range-label{font-size:12px; color:var(--ink-dim); padding:0 2px 0 6px;}
+
+  /* ================= Custom stock bar ================= */
+  .custombar{
+    flex:1 0 100%;
+    display:flex; flex-wrap:wrap; gap:8px 10px; align-items:center;
+    background:var(--desk-2); border:1px solid var(--panel-edge);
+    border-radius:var(--radius); padding:8px 10px;
+  }
+  .custombar[hidden]{display:none;}
+  .custombar .cb-title{
+    font-size:11px; letter-spacing:.12em; text-transform:uppercase;
+    color:var(--ink-dim); font-weight:700;
+  }
+  .custombar label{display:flex; align-items:center; gap:5px; font-size:12px; color:var(--ink-dim);}
+  .custombar input{
+    width:62px; background:var(--desk); color:var(--ink);
+    border:1px solid var(--panel-edge); border-radius:6px;
+    padding:5px 6px; font:inherit; font-size:12px; text-align:center;
+  }
+  .custombar .apply-btn{
+    background:var(--accent); color:var(--accent-ink);
+    font-weight:800; border-radius:7px; padding:6px 14px;
+  }
+  .custombar .apply-btn:hover{filter:brightness(1.08); background:var(--accent);}
+  .cb-note{font-size:12px; color:var(--warn);}
   .print-group input{
     width:70px; background:var(--desk); color:var(--ink);
     border:1px solid var(--panel-edge); border-radius:7px;
@@ -234,10 +266,10 @@
   .page-bar button:hover{border-color:var(--accent); color:var(--accent);}
 
   /* ================= Print ================= */
-  @page{ size:letter; margin:0; }
+  /* the real @page size is written into #pageStyle for the chosen label type */
   @media print{
     body{background:#fff;}
-    .topbar, .entries-panel, .panel-head, .perf, .slot-num,
+    .topbar, .entries-panel, .panel-head, .cut, .slot-num,
     .overflow-flag, .page-tag, .page-gap, .page-bar{display:none !important;}
     .page-wrap.no-print{display:none !important;}
     .app{display:block; min-height:0;}
@@ -248,14 +280,12 @@
     .page-wrap{transform:none !important; width:auto !important; height:auto !important; margin:0;}
     .page{
       box-shadow:none;
-      width:8.5in; height:11in;
       overflow:hidden;
       page-break-after:always;
       break-inside:avoid;
     }
     .page:last-child{page-break-after:auto;}
     .page-wrap.last-print .page{page-break-after:auto;}
-    .plabel{height:50%; overflow:hidden;}
     .pcontent:empty::before{content:"";}
   }
 </style>
@@ -265,7 +295,12 @@
 <header class="topbar">
   <div class="brand">
     <b>Label Sheets</b>
-    <span>S-5049G · two 8½ × 5½″ labels per page</span>
+    <span id="stockNote">S-5049G · two 8½ × 5½″ labels per page</span>
+  </div>
+
+  <div class="group" aria-label="Label type">
+    <label class="field-label" for="stockSel">Label</label>
+    <select id="stockSel" title="Which label stock you are printing on"></select>
   </div>
 
   <div class="group" role="toolbar" aria-label="Text style">
@@ -283,7 +318,8 @@
       <option value="Impact, 'Arial Black', sans-serif">Impact</option>
     </select>
     <select id="fontSize" title="Font size (pt) — applies to highlighted text, or the whole label if nothing is highlighted">
-      <option>14</option><option>16</option><option>18</option><option>20</option>
+      <option>8</option><option>9</option><option>10</option><option>11</option>
+      <option>12</option><option>14</option><option>16</option><option>18</option><option>20</option>
       <option>22</option><option>24</option><option selected>26</option><option>28</option>
       <option>32</option><option>36</option><option>40</option><option>48</option>
       <option>56</option><option>64</option><option>72</option>
@@ -315,6 +351,24 @@
     <input type="text" id="printRange" placeholder="All" title="Which sheets to print or export. Examples:  All  ·  2  ·  1,3  ·  2-4">
     <button id="pdfBtn" title="Save the selected sheets as a PDF file">⬇ PDF</button>
     <button class="print-btn" id="printBtn">🖨 Print</button>
+  </div>
+
+  <div class="custombar" id="customBar" hidden>
+    <span class="cb-title">Custom size (inches)</span>
+    <label>Page W <input id="cPageW" type="number" step="0.01" min="1"  value="8.5"></label>
+    <label>Page H <input id="cPageH" type="number" step="0.01" min="1"  value="11"></label>
+    <label>Across <input id="cCols"  type="number" step="1"    min="1"  value="2"></label>
+    <label>Down <input id="cRows"    type="number" step="1"    min="1"  value="5"></label>
+    <label>Label W <input id="cLabW" type="number" step="0.01" min="0.5" value="4"></label>
+    <label>Label H <input id="cLabH" type="number" step="0.01" min="0.5" value="2"></label>
+    <label>Left margin <input id="cMargL" type="number" step="0.01" min="0" value="0.156"></label>
+    <label>Top margin <input id="cMargT"  type="number" step="0.01" min="0" value="0.5"></label>
+    <label>Gap across <input id="cGapX"   type="number" step="0.01" min="0" value="0.188"></label>
+    <label>Gap down <input id="cGapY"     type="number" step="0.01" min="0" value="0"></label>
+    <label>Text inset <input id="cPad"    type="number" step="0.01" min="0" value="0.15"></label>
+    <label>Font pt <input id="cFont"      type="number" step="1"    min="6" max="200" value="14"></label>
+    <button class="apply-btn" id="applyCustom">Apply</button>
+    <span class="cb-note" id="customNote"></span>
   </div>
 </header>
 
@@ -354,6 +408,200 @@
 
   try { document.execCommand("styleWithCSS", false, true); } catch(e){}
   try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch(e){}
+
+  /* ================= Label stocks =================
+     All measurements are inches, taken from the sheet makers' own templates.
+       page   [width, height] of the sheet that goes through the printer
+       grid   [labels across, labels down]
+       size   [width, height] of one label
+       margin [left, top] from the sheet edge to the first label
+       gutter [space between columns, space between rows]
+       pad    [top/bottom, left/right] breathing room inside a label
+       font   default point size for text on this stock                        */
+  const STOCKS = [
+    /* ---- Uline sheets (geometry read from Uline's own Word templates) ---- */
+    { id:"s5049g", group:"Uline sheets", name:"S-5049G — 8½ × 5½″, 2 per sheet",
+      note:"S-5049G · two 8½ × 5½″ labels per page",
+      page:[8.5,11], grid:[1,2], size:[8.5,5.5],
+      margin:[0,0], gutter:[0,0], pad:[0.45,0.5], font:26 },
+
+    { id:"s17049g", group:"Uline sheets", name:"S-17049G — 4¼ × 5½″, 4 per sheet",
+      note:"S-17049G · four 4¼ × 5½″ labels per page",
+      page:[8.5,11], grid:[2,2], size:[4.25,5.5],
+      margin:[0,0], gutter:[0,0], pad:[0.4,0.3], font:24 },
+
+    { id:"s6229g", group:"Uline sheets", name:"S-6229G — 4 × 6″, 4 per legal sheet",
+      note:"S-6229G · four 4 × 6″ labels per 8½ × 14″ page",
+      page:[8.5,14], grid:[2,2], size:[4,6],
+      margin:[0.2,1], gutter:[0.1,0], pad:[0.35,0.3], font:24 },
+
+    { id:"s5048g", group:"Uline sheets", name:"S-5048G — 4 × 2½″, 8 per sheet",
+      note:"S-5048G · eight 4 × 2½″ labels per page",
+      page:[8.5,11], grid:[2,4], size:[4,2.5],
+      margin:[0.1702,0.5], gutter:[0.1597,0], pad:[0.18,0.2], font:16 },
+
+    { id:"s3847g", group:"Uline sheets", name:"S-3847G — 4 × 2″, 10 per sheet",
+      note:"S-3847G · ten 4 × 2″ labels per page",
+      page:[8.5,11], grid:[2,5], size:[4,2],
+      margin:[0.15625,0.5], gutter:[0.1875,0], pad:[0.16,0.2], font:14 },
+
+    { id:"s5047g", group:"Uline sheets", name:"S-5047G — 2⅝ × 1″, 30 per sheet",
+      note:"S-5047G · thirty 2⅝ × 1″ address labels per page",
+      page:[8.5,11], grid:[3,10], size:[2.625,1],
+      margin:[0.1875,0.5], gutter:[0.125,0], pad:[0.06,0.12], font:10 },
+
+    /* ---- other common letter-size sheets ---- */
+    { id:"full", group:"Other sheets", name:"Full sheet — 8½ × 11″, 1 per sheet (Avery 8165)",
+      note:"full sheet · one 8½ × 11″ label per page",
+      page:[8.5,11], grid:[1,1], size:[8.5,11],
+      margin:[0,0], gutter:[0,0], pad:[0.75,0.75], font:36 },
+
+    { id:"a5168", group:"Other sheets", name:"3½ × 5″, 4 per sheet (Avery 5168)",
+      note:"four 3½ × 5″ labels per page",
+      page:[8.5,11], grid:[2,2], size:[3.5,5],
+      margin:[0.5,0.5], gutter:[0.5,0], pad:[0.3,0.3], font:22 },
+
+    { id:"a5164", group:"Other sheets", name:"4 × 3⅓″, 6 per sheet (Avery 5164)",
+      note:"six 4 × 3⅓″ shipping labels per page",
+      page:[8.5,11], grid:[2,3], size:[4,3.3333],
+      margin:[0.15625,0.5], gutter:[0.1875,0], pad:[0.22,0.22], font:18 },
+
+    { id:"a5162", group:"Other sheets", name:"4 × 1⅓″, 14 per sheet (Avery 5162)",
+      note:"fourteen 4 × 1⅓″ address labels per page",
+      page:[8.5,11], grid:[2,7], size:[4,1.3333],
+      margin:[0.15625,0.8335], gutter:[0.1875,0], pad:[0.1,0.18], font:12 },
+
+    { id:"a5161", group:"Other sheets", name:"4 × 1″, 20 per sheet (Avery 5161)",
+      note:"twenty 4 × 1″ address labels per page",
+      page:[8.5,11], grid:[2,10], size:[4,1],
+      margin:[0.15625,0.5], gutter:[0.1875,0], pad:[0.08,0.16], font:11 },
+
+    /* ---- one label per page, for roll / thermal printers ---- */
+    { id:"t4x6", group:"Thermal rolls", name:"4 × 6″ thermal — 1 per page",
+      note:"4 × 6″ thermal label · one per page",
+      page:[4,6], grid:[1,1], size:[4,6],
+      margin:[0,0], gutter:[0,0], pad:[0.25,0.25], font:24 },
+
+    { id:"t4x2", group:"Thermal rolls", name:"4 × 2″ thermal — 1 per page",
+      note:"4 × 2″ thermal label · one per page",
+      page:[4,2], grid:[1,1], size:[4,2],
+      margin:[0,0], gutter:[0,0], pad:[0.15,0.2], font:16 },
+
+    { id:"custom", group:"Custom", name:"Custom size…",
+      note:"custom label size",
+      page:[8.5,11], grid:[2,5], size:[4,2],
+      margin:[0.15625,0.5], gutter:[0.1875,0], pad:[0.15,0.15], font:14 }
+  ];
+
+  const stockSel  = document.getElementById("stockSel");
+  const stockNote = document.getElementById("stockNote");
+  const customBar = document.getElementById("customBar");
+  const customNote= document.getElementById("customNote");
+  const pageStyle = document.getElementById("pageStyle");
+  const STOCK_KEY = "shiplabel.stock";
+
+  (function buildStockList(){
+    let group = null;
+    STOCKS.forEach(st => {
+      if (!group || group.label !== st.group){
+        group = document.createElement("optgroup");
+        group.label = st.group;
+        stockSel.appendChild(group);
+      }
+      const opt = document.createElement("option");
+      opt.value = st.id;
+      opt.textContent = st.name;
+      group.appendChild(opt);
+    });
+  })();
+
+  let stock = STOCKS[0];
+  function findStock(id){ return STOCKS.find(st => st.id === id) || null; }
+  function perPage(){ return stock.grid[0] * stock.grid[1]; }
+
+  function applyStock(id, opts){
+    const found = findStock(id);
+    if (!found) return;
+    stock = found;
+    stockSel.value = stock.id;
+    stockNote.textContent = stock.note;
+    customBar.hidden = stock.id !== "custom";
+
+    /* the sheet the browser prints on, and the size new text starts at */
+    pageStyle.textContent =
+      "@page{ size:" + stock.page[0] + "in " + stock.page[1] + "in; margin:0; }";
+    /* shrink the card just enough to fit a 5.4 × 4.4in slot; small labels
+       are shown at their real size */
+    const zoom = Math.min(1, 5.4 / stock.size[0], 4.4 / stock.size[1]);
+    const root = document.documentElement.style;
+    root.setProperty("--ed-font",  stock.font + "pt");
+    root.setProperty("--ed-w",     stock.size[0] + "in");
+    root.setProperty("--ed-h",     stock.size[1] + "in");
+    root.setProperty("--ed-pad-y", stock.pad[0] + "in");
+    root.setProperty("--ed-pad-x", stock.pad[1] + "in");
+    root.setProperty("--ed-zoom",  zoom.toFixed(3));
+    sizeSel.value = String(stock.font);
+
+    try { localStorage.setItem(STOCK_KEY, stock.id); } catch(e){}
+    if (!opts || !opts.silent) render();
+  }
+
+  stockSel.addEventListener("change", () => applyStock(stockSel.value));
+
+  /* ---------- custom size ---------- */
+  const cIn = id => document.getElementById(id);
+  function customFields(){
+    return { pageW:cIn("cPageW"), pageH:cIn("cPageH"), cols:cIn("cCols"), rows:cIn("cRows"),
+             labW:cIn("cLabW"), labH:cIn("cLabH"), margL:cIn("cMargL"), margT:cIn("cMargT"),
+             gapX:cIn("cGapX"), gapY:cIn("cGapY"), pad:cIn("cPad"), font:cIn("cFont") };
+  }
+  function customFromFields(){
+    const f = customFields(), num = el => parseFloat(el.value);
+    const g = {
+      page:[num(f.pageW), num(f.pageH)],
+      grid:[Math.round(num(f.cols)), Math.round(num(f.rows))],
+      size:[num(f.labW), num(f.labH)],
+      margin:[num(f.margL), num(f.margT)],
+      gutter:[num(f.gapX), num(f.gapY)],
+      pad:[num(f.pad), num(f.pad)],
+      font:Math.round(num(f.font))
+    };
+    for (const key in g){
+      const v = g[key];
+      if (Array.isArray(v) ? v.some(n => !isFinite(n) || n < 0) : (!isFinite(v) || v <= 0))
+        return { error:"Every box needs a number." };
+    }
+    if (g.grid[0] < 1 || g.grid[1] < 1) return { error:"Across and down must be at least 1." };
+    if (g.size[0] <= 0 || g.size[1] <= 0) return { error:"Label width and height must be more than 0." };
+    const usedW = g.margin[0] + g.grid[0]*g.size[0] + (g.grid[0]-1)*g.gutter[0];
+    const usedH = g.margin[1] + g.grid[1]*g.size[1] + (g.grid[1]-1)*g.gutter[1];
+    if (usedW > g.page[0] + 0.01 || usedH > g.page[1] + 0.01)
+      return { error:"That grid is " + usedW.toFixed(2) + " × " + usedH.toFixed(2) +
+                     "″ — bigger than the page." };
+    return { geom:g };
+  }
+  function fieldsFromCustom(g){
+    const f = customFields();
+    f.pageW.value = g.page[0];   f.pageH.value = g.page[1];
+    f.cols.value  = g.grid[0];   f.rows.value  = g.grid[1];
+    f.labW.value  = g.size[0];   f.labH.value  = g.size[1];
+    f.margL.value = g.margin[0]; f.margT.value = g.margin[1];
+    f.gapX.value  = g.gutter[0]; f.gapY.value  = g.gutter[1];
+    f.pad.value   = g.pad[0];    f.font.value  = g.font;
+  }
+  function setCustom(g){
+    const custom = findStock("custom");
+    Object.assign(custom, g);
+    custom.note = g.size[0] + " × " + g.size[1] + "″ · " +
+      (g.grid[0]*g.grid[1]) + " per " + g.page[0] + " × " + g.page[1] + "″ page";
+  }
+  document.getElementById("applyCustom").addEventListener("click", () => {
+    const res = customFromFields();
+    if (res.error){ customNote.textContent = res.error; return; }
+    customNote.textContent = "";
+    setCustom(res.geom);
+    applyStock("custom");
+  });
 
   /* ================= Entries ================= */
   function makeEntry(data){
@@ -571,7 +819,8 @@
     }
 
     const labels = flattenedLabels();
-    const pageTotal = Math.max(1, Math.ceil(labels.length / 2));
+    const slots = perPage();
+    const pageTotal = Math.max(1, Math.ceil(labels.length / slots));
     pageCount.textContent = pageTotal + (pageTotal === 1 ? " page" : " pages");
 
     pagesEl.innerHTML = "";
@@ -590,17 +839,29 @@
 
       const page = document.createElement("div");
       page.className = "page";
+      page.style.width  = stock.page[0] + "in";
+      page.style.height = stock.page[1] + "in";
 
-      for (let s = 0; s < 2; s++){
-        const item = labels[p*2 + s];
+      for (let s = 0; s < slots; s++){
+        const item = labels[p*slots + s];
+        const col  = s % stock.grid[0];
+        const row  = Math.floor(s / stock.grid[0]);
         const lab = document.createElement("div");
         lab.className = "plabel";
+        lab.style.left   = (stock.margin[0] + col*(stock.size[0] + stock.gutter[0])) + "in";
+        lab.style.top    = (stock.margin[1] + row*(stock.size[1] + stock.gutter[1])) + "in";
+        lab.style.width  = stock.size[0] + "in";
+        lab.style.height = stock.size[1] + "in";
+        if (stock.size[1] < 1.6) lab.classList.add("tiny");
         if (item && item.d.vCenter) lab.classList.add("v-center");
         lab.innerHTML =
           '<span class="slot-num">' + (item ? "Label " + item.num : "Empty") + '</span>' +
-          '<span class="overflow-flag">Over the edge — shrink or trim</span>';
+          '<span class="overflow-flag">Over the edge — shrink or trim</span>' +
+          '<span class="cut"></span>';
         const content = document.createElement("div");
         content.className = "pcontent";
+        content.style.margin   = stock.pad[0] + "in " + stock.pad[1] + "in";
+        content.style.fontSize = stock.font + "pt";
         if (item){
           content.innerHTML = item.d.html;
           if (item.d.fontSize)   content.style.fontSize   = item.d.fontSize;
@@ -609,9 +870,6 @@
         lab.appendChild(content);
         page.appendChild(lab);
       }
-      const perf = document.createElement("div");
-      perf.className = "perf";
-      page.appendChild(perf);
 
       pagesEl.appendChild(bar);
       wrap.appendChild(page);
@@ -664,12 +922,20 @@
 
   /* ================= Save / Open ================= */
   function sheetData(){
-    return {
-      app: "s5049g-label-sheet",
-      version: 2,
+    const data = {
+      app: "shiplabel-sheet",
+      version: 3,
       savedAt: new Date().toISOString(),
+      stock: stock.id,
       entries: allEntries().map(entryData)
     };
+    if (stock.id === "custom"){
+      data.customStock = {
+        page:stock.page, grid:stock.grid, size:stock.size,
+        margin:stock.margin, gutter:stock.gutter, pad:stock.pad, font:stock.font
+      };
+    }
+    return data;
   }
   function suggestedName(){
     const first = allEntries()[0];
@@ -703,14 +969,21 @@
     reader.onload = () => {
       try{
         const data = JSON.parse(reader.result);
+        const known = data.app === "shiplabel-sheet" || data.app === "s5049g-label-sheet";
         let list = null;
-        if (data.app === "s5049g-label-sheet" && Array.isArray(data.entries)) list = data.entries;
-        else if (data.app === "s5049g-label-sheet" && Array.isArray(data.labels))
+        if (known && Array.isArray(data.entries)) list = data.entries;
+        else if (known && Array.isArray(data.labels))
           list = data.labels.filter(L => (L.html || "").trim()); // old single-sheet files
         if (!list) throw new Error("wrong format");
         entriesList.innerHTML = "";
         activeEditor = null;
         list.forEach(L => entriesList.appendChild(makeEntry(L)));
+        // files without a stock came from the S-5049G-only version
+        if (data.customStock && data.stock === "custom"){
+          setCustom(data.customStock);
+          fieldsFromCustom(data.customStock);
+        }
+        applyStock(findStock(data.stock) ? data.stock : "s5049g", { silent:true });
         queueRender();
       }catch(err){
         alert("That file doesn't look like a saved label file from this app.");
@@ -871,19 +1144,21 @@
         return;
       }
       const jsPDF = window.jspdf.jsPDF;
-      const pdf = new jsPDF({ unit:"in", format:"letter", orientation:"portrait" });
+      const sheet = [stock.page[0], stock.page[1]];
+      const orient = sheet[0] > sheet[1] ? "landscape" : "portrait";
+      const pdf = new jsPDF({ unit:"in", format:sheet.slice(), orientation:orient });
       for (let i = 0; i < wraps.length; i++){
         const clone = wraps[i].querySelector(".page").cloneNode(true);
         clone.style.boxShadow = "none";
-        clone.querySelectorAll(".perf, .slot-num, .overflow-flag").forEach(n => n.remove());
+        clone.querySelectorAll(".cut, .slot-num, .overflow-flag").forEach(n => n.remove());
         convertZoomForCapture(clone);
         holder.innerHTML = "";
         holder.appendChild(clone);
         const canvas = await window.html2canvas(clone, {
           scale: 2, backgroundColor: "#ffffff", logging: false
         });
-        if (i > 0) pdf.addPage("letter", "portrait");
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, 8.5, 11);
+        if (i > 0) pdf.addPage(sheet.slice(), orient);
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, sheet[0], sheet[1]);
       }
       pdf.save(pdfName(selection));
     }catch(err){
@@ -908,6 +1183,13 @@
   });
 
   /* ================= Init ================= */
+  let startId = "s5049g";
+  try { startId = localStorage.getItem(STOCK_KEY) || startId; } catch(e){}
+  if (startId === "custom"){
+    const res = customFromFields();
+    if (res.geom) setCustom(res.geom); else startId = "s5049g";
+  }
+  applyStock(findStock(startId) ? startId : "s5049g", { silent:true });
   entriesList.appendChild(makeEntry());
   render();
   window.addEventListener("load", () => { scalePages(); fitAll(); });
