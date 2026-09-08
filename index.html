@@ -303,6 +303,11 @@
     <select id="stockSel" title="Which label stock you are printing on"></select>
   </div>
 
+  <div class="group" role="toolbar" aria-label="Page orientation">
+    <button id="portraitBtn" title="Print the sheet the tall way">▯ Portrait</button>
+    <button id="landscapeBtn" title="Turn the sheet sideways — feed it into the printer rotated, and the text runs along the label's other edge">▭ Landscape</button>
+  </div>
+
   <div class="group" role="toolbar" aria-label="Text style">
     <button class="b" data-cmd="bold" title="Bold (Ctrl+B)">B</button>
     <button class="i" data-cmd="italic" title="Italic (Ctrl+I)">I</button>
@@ -494,11 +499,14 @@
   ];
 
   const stockSel  = document.getElementById("stockSel");
+  const portraitBtn = document.getElementById("portraitBtn");
+  const landscapeBtn= document.getElementById("landscapeBtn");
   const stockNote = document.getElementById("stockNote");
   const customBar = document.getElementById("customBar");
   const customNote= document.getElementById("customNote");
   const pageStyle = document.getElementById("pageStyle");
-  const STOCK_KEY = "shiplabel.stock";
+  const STOCK_KEY  = "shiplabel.stock";
+  const ORIENT_KEY = "shiplabel.orientation";
 
   (function buildStockList(){
     let group = null;
@@ -515,34 +523,74 @@
     });
   })();
 
-  let stock = STOCKS[0];
+  let stock = STOCKS[0];          // the stock as the maker describes it
+  let sheet = STOCKS[0];          // the same stock as it sits on the printer
+  let orientation = "portrait";
   function findStock(id){ return STOCKS.find(st => st.id === id) || null; }
-  function perPage(){ return stock.grid[0] * stock.grid[1]; }
+  function perPage(){ return sheet.grid[0] * sheet.grid[1]; }
+
+  /* Turning the sheet sideways doesn't move the die-cut, so the whole grid
+     rotates with the paper. The text stays upright on the rotated page, which
+     is what lands it along the label's other edge. */
+  const r4 = n => Math.round(n * 10000) / 10000;
+  function orient(st, dir){
+    if (dir !== "landscape") return st;
+    const W = st.page[0],  H = st.page[1];
+    const C = st.grid[0],  R = st.grid[1];
+    const sw = st.size[0], sh = st.size[1];
+    const gx = st.gutter[0], gy = st.gutter[1];
+    return Object.assign({}, st, {
+      page:   [H, W],
+      grid:   [R, C],
+      size:   [sh, sw],
+      /* what was the bottom margin becomes the left one */
+      margin: [Math.max(0, r4(H - st.margin[1] - (R-1)*(sh+gy) - sh)), st.margin[0]],
+      gutter: [gy, gx],
+      pad:    [st.pad[1], st.pad[0]]
+    });
+  }
+
+  function setOrientation(dir){
+    orientation = dir === "landscape" ? "landscape" : "portrait";
+    try { localStorage.setItem(ORIENT_KEY, orientation); } catch(e){}
+    applyStock(stock.id);
+  }
+  document.getElementById("portraitBtn")
+    .addEventListener("click", () => setOrientation("portrait"));
+  document.getElementById("landscapeBtn")
+    .addEventListener("click", () => setOrientation("landscape"));
 
   function applyStock(id, opts){
     const found = findStock(id);
     if (!found) return;
     stock = found;
+    sheet = orient(stock, orientation);
+    const sideways = orientation === "landscape";
     stockSel.value = stock.id;
-    stockNote.textContent = stock.note;
+    stockNote.textContent = stock.note + (sideways ? " · turned sideways" : "");
     customBar.hidden = stock.id !== "custom";
+    portraitBtn.classList.toggle("is-on", !sideways);
+    landscapeBtn.classList.toggle("is-on", sideways);
 
     /* the sheet the browser prints on, and the size new text starts at */
     pageStyle.textContent =
-      "@page{ size:" + stock.page[0] + "in " + stock.page[1] + "in; margin:0; }";
+      "@page{ size:" + sheet.page[0] + "in " + sheet.page[1] + "in; margin:0; }";
     /* shrink the card just enough to fit a 5.4 × 4.4in slot; small labels
        are shown at their real size */
-    const zoom = Math.min(1, 5.4 / stock.size[0], 4.4 / stock.size[1]);
+    const zoom = Math.min(1, 5.4 / sheet.size[0], 4.4 / sheet.size[1]);
     const root = document.documentElement.style;
-    root.setProperty("--ed-font",  stock.font + "pt");
-    root.setProperty("--ed-w",     stock.size[0] + "in");
-    root.setProperty("--ed-h",     stock.size[1] + "in");
-    root.setProperty("--ed-pad-y", stock.pad[0] + "in");
-    root.setProperty("--ed-pad-x", stock.pad[1] + "in");
+    root.setProperty("--ed-font",  sheet.font + "pt");
+    root.setProperty("--ed-w",     sheet.size[0] + "in");
+    root.setProperty("--ed-h",     sheet.size[1] + "in");
+    root.setProperty("--ed-pad-y", sheet.pad[0] + "in");
+    root.setProperty("--ed-pad-x", sheet.pad[1] + "in");
     root.setProperty("--ed-zoom",  zoom.toFixed(3));
-    sizeSel.value = String(stock.font);
+    sizeSel.value = String(sheet.font);
 
-    try { localStorage.setItem(STOCK_KEY, stock.id); } catch(e){}
+    try {
+      localStorage.setItem(STOCK_KEY, stock.id);
+      localStorage.setItem(ORIENT_KEY, orientation);
+    } catch(e){}
     if (!opts || !opts.silent) render();
   }
 
@@ -839,20 +887,20 @@
 
       const page = document.createElement("div");
       page.className = "page";
-      page.style.width  = stock.page[0] + "in";
-      page.style.height = stock.page[1] + "in";
+      page.style.width  = sheet.page[0] + "in";
+      page.style.height = sheet.page[1] + "in";
 
       for (let s = 0; s < slots; s++){
         const item = labels[p*slots + s];
-        const col  = s % stock.grid[0];
-        const row  = Math.floor(s / stock.grid[0]);
+        const col  = s % sheet.grid[0];
+        const row  = Math.floor(s / sheet.grid[0]);
         const lab = document.createElement("div");
         lab.className = "plabel";
-        lab.style.left   = (stock.margin[0] + col*(stock.size[0] + stock.gutter[0])) + "in";
-        lab.style.top    = (stock.margin[1] + row*(stock.size[1] + stock.gutter[1])) + "in";
-        lab.style.width  = stock.size[0] + "in";
-        lab.style.height = stock.size[1] + "in";
-        if (stock.size[1] < 1.6) lab.classList.add("tiny");
+        lab.style.left   = (sheet.margin[0] + col*(sheet.size[0] + sheet.gutter[0])) + "in";
+        lab.style.top    = (sheet.margin[1] + row*(sheet.size[1] + sheet.gutter[1])) + "in";
+        lab.style.width  = sheet.size[0] + "in";
+        lab.style.height = sheet.size[1] + "in";
+        if (sheet.size[1] < 1.6) lab.classList.add("tiny");
         if (item && item.d.vCenter) lab.classList.add("v-center");
         lab.innerHTML =
           '<span class="slot-num">' + (item ? "Label " + item.num : "Empty") + '</span>' +
@@ -860,8 +908,8 @@
           '<span class="cut"></span>';
         const content = document.createElement("div");
         content.className = "pcontent";
-        content.style.margin   = stock.pad[0] + "in " + stock.pad[1] + "in";
-        content.style.fontSize = stock.font + "pt";
+        content.style.margin   = sheet.pad[0] + "in " + sheet.pad[1] + "in";
+        content.style.fontSize = sheet.font + "pt";
         if (item){
           content.innerHTML = item.d.html;
           if (item.d.fontSize)   content.style.fontSize   = item.d.fontSize;
@@ -927,6 +975,7 @@
       version: 3,
       savedAt: new Date().toISOString(),
       stock: stock.id,
+      orientation: orientation,
       entries: allEntries().map(entryData)
     };
     if (stock.id === "custom"){
@@ -983,6 +1032,7 @@
           setCustom(data.customStock);
           fieldsFromCustom(data.customStock);
         }
+        orientation = data.orientation === "landscape" ? "landscape" : "portrait";
         applyStock(findStock(data.stock) ? data.stock : "s5049g", { silent:true });
         queueRender();
       }catch(err){
@@ -1144,9 +1194,9 @@
         return;
       }
       const jsPDF = window.jspdf.jsPDF;
-      const sheet = [stock.page[0], stock.page[1]];
-      const orient = sheet[0] > sheet[1] ? "landscape" : "portrait";
-      const pdf = new jsPDF({ unit:"in", format:sheet.slice(), orientation:orient });
+      const sheetSize = [sheet.page[0], sheet.page[1]];
+      const facing = sheetSize[0] > sheetSize[1] ? "landscape" : "portrait";
+      const pdf = new jsPDF({ unit:"in", format:sheetSize.slice(), orientation:facing });
       for (let i = 0; i < wraps.length; i++){
         const clone = wraps[i].querySelector(".page").cloneNode(true);
         clone.style.boxShadow = "none";
@@ -1157,8 +1207,9 @@
         const canvas = await window.html2canvas(clone, {
           scale: 2, backgroundColor: "#ffffff", logging: false
         });
-        if (i > 0) pdf.addPage(sheet.slice(), orient);
-        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0, sheet[0], sheet[1]);
+        if (i > 0) pdf.addPage(sheetSize.slice(), facing);
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", 0, 0,
+                     sheetSize[0], sheetSize[1]);
       }
       pdf.save(pdfName(selection));
     }catch(err){
@@ -1184,7 +1235,10 @@
 
   /* ================= Init ================= */
   let startId = "s5049g";
-  try { startId = localStorage.getItem(STOCK_KEY) || startId; } catch(e){}
+  try {
+    startId = localStorage.getItem(STOCK_KEY) || startId;
+    orientation = localStorage.getItem(ORIENT_KEY) === "landscape" ? "landscape" : "portrait";
+  } catch(e){}
   if (startId === "custom"){
     const res = customFromFields();
     if (res.geom) setCustom(res.geom); else startId = "s5049g";

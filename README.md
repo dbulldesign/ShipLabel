@@ -28,6 +28,14 @@ The Uline measurements are read out of Uline's own Word templates. Anything
 else goes under **Custom size…**, which takes the page size, the grid, the
 label size, the margins and the gaps between labels in inches.
 
+## Portrait and landscape
+
+**Landscape** turns the sheet sideways. The die-cut doesn't move when you
+rotate a sheet, so the whole grid rotates with the paper — the labels still
+line up, but the text now runs along the label's other edge. Feed the sheet
+into the printer rotated to match. For one-per-page stocks it simply swaps the
+media size, so a 4 × 6″ thermal label prints as 6 × 4″.
+
 ## Printing
 
 Print at 100% / "Actual size" with page scaling off, and check the first sheet
