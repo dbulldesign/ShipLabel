@@ -149,21 +149,25 @@
   }
   .entry-bar .tools{margin-left:auto; display:flex; gap:2px;}
   .entry-bar .tools button{padding:5px 8px; font-size:13px;}
-  .entry-editor{
-    background:#fff; color:#000;
-    /* a scale model of the real label: true inches, shrunk by --ed-zoom,
-       so what fits on the card is what fits on the label */
+  .entry-canvas{
+    /* a scale model of the real label: true inches, shrunk by --ed-zoom */
+    background:#fff;
     width:var(--ed-w, 8.5in);
-    min-height:var(--ed-h, 5.5in);
-    padding:var(--ed-pad-y, 0.45in) var(--ed-pad-x, 0.5in);
+    height:var(--ed-h, 5.5in);
     margin:12px auto;
+    position:relative;
     box-shadow:0 2px 10px rgba(0,0,0,.35);
+    zoom:var(--ed-zoom, 0.64);
+  }
+  .entry-editor{
+    /* the text box, turned by the label's own rotation (set inline) */
+    position:absolute; left:50%; top:50%;
+    color:#000;
     outline:none;
     font-family:Arial, Helvetica, sans-serif;
     font-size:var(--ed-font, 26pt); font-weight:bold;
     text-align:center; line-height:1.25;
     word-wrap:break-word;
-    zoom:var(--ed-zoom, 0.64);
   }
   .entry-editor:empty::before{
     content:"Type this label's text…";
@@ -187,6 +191,9 @@
   .page-gap{height:18px;}
   /* Each label is placed with inline left/top/width/height from the stock table. */
   .plabel{position:absolute; display:flex; overflow:hidden;}
+  /* holds the label's text and carries its rotation; sized to the label,
+     or to the label turned on its side */
+  .protate{position:absolute; left:50%; top:50%; display:flex;}
   .plabel.v-center .pcontent{display:flex; flex-direction:column; justify-content:center;}
   .pcontent{
     flex:1; overflow:hidden;
@@ -336,6 +343,7 @@
     <button data-cmd="justifyCenter" title="Align center">≡</button>
     <button data-cmd="justifyRight" title="Align right">⯈</button>
     <button id="vCenterBtn" title="Center this label's text vertically on the printed label">↕ Middle</button>
+    <button id="rotTextBtn" title="Turn this label's text a quarter turn — click again for 180° and 270°">⟳ Text 0°</button>
   </div>
 
   <div class="group" aria-label="Save and load">
@@ -657,6 +665,7 @@
     const entry = document.createElement("div");
     entry.className = "entry";
     if (data.vCenter) entry.dataset.vcenter = "1";
+    if (data.textRotate) entry.dataset.rot = String(data.textRotate);
 
     const bar = document.createElement("div");
     bar.className = "entry-bar";
@@ -680,14 +689,19 @@
     if (data.fontSize)   ed.style.fontSize   = data.fontSize;
     if (data.fontFamily) ed.style.fontFamily = data.fontFamily;
 
+    const canvas = document.createElement("div");
+    canvas.className = "entry-canvas";
+    canvas.appendChild(ed);
+
     entry.appendChild(bar);
-    entry.appendChild(ed);
+    entry.appendChild(canvas);
 
     ed.addEventListener("focus", () => {
       activeEditor = ed;
       document.querySelectorAll(".entry").forEach(el =>
         el.classList.toggle("focused", el === entry));
       syncVBtn();
+      syncRotBtn();
     });
     ed.addEventListener("input", queueRender);
     ed.addEventListener("paste", e => {
@@ -715,7 +729,22 @@
       queueRender();
     });
 
+    styleEditor(entry);
     return entry;
+  }
+
+  /* The editable box mirrors the printed one: same inches, same inset, same
+     quarter turn — so what fits on the card is what fits on the label. */
+  function styleEditor(entry){
+    const ed  = entry.querySelector(".entry-editor");
+    const rot = parseInt(entry.dataset.rot, 10) || 0;
+    const turned = rot === 90 || rot === 270;
+    ed.style.width     = (turned ? sheet.size[1] : sheet.size[0]) + "in";
+    ed.style.minHeight = (turned ? sheet.size[0] : sheet.size[1]) + "in";
+    ed.style.padding   = turned
+      ? sheet.pad[1] + "in " + sheet.pad[0] + "in"
+      : sheet.pad[0] + "in " + sheet.pad[1] + "in";
+    ed.style.transform = "translate(-50%, -50%) rotate(" + rot + "deg)";
   }
 
   function entryData(entry){
@@ -725,6 +754,7 @@
       fontSize: ed.style.fontSize || "",
       fontFamily: ed.style.fontFamily || "",
       vCenter: entry.dataset.vcenter === "1",
+      textRotate: parseInt(entry.dataset.rot, 10) || 0,
       copies: parseInt(entry.querySelector(".copies-wrap input").value, 10) || 1
     };
   }
@@ -835,6 +865,24 @@
     vBtn.classList.toggle("is-on", !!(entry && entry.dataset.vcenter === "1"));
   }
 
+  const rotBtn = document.getElementById("rotTextBtn");
+  rotBtn.addEventListener("mousedown", e => e.preventDefault());
+  rotBtn.addEventListener("click", () => {
+    if (!ensureActive()) return;
+    const entry = activeEditor.closest(".entry");
+    const next = ((parseInt(entry.dataset.rot, 10) || 0) + 90) % 360;
+    if (next) entry.dataset.rot = String(next); else delete entry.dataset.rot;
+    styleEditor(entry);
+    syncRotBtn();
+    queueRender();
+  });
+  function syncRotBtn(){
+    const entry = activeEditor && activeEditor.closest(".entry");
+    const rot = entry ? (parseInt(entry.dataset.rot, 10) || 0) : 0;
+    rotBtn.textContent = "⟳ Text " + rot + "°";
+    rotBtn.classList.toggle("is-on", rot !== 0);
+  }
+
   /* ================= Preview build ================= */
   let renderTimer = null;
   function queueRender(){
@@ -853,7 +901,10 @@
 
   function render(){
     const entries = allEntries();
-    entries.forEach((e, i) => e.querySelector(".entry-num").textContent = "LABEL " + (i+1));
+    entries.forEach((e, i) => {
+      e.querySelector(".entry-num").textContent = "LABEL " + (i+1);
+      styleEditor(e);
+    });
     entryCount.textContent = entries.length + (entries.length === 1 ? " label" : " labels");
 
     if (!entries.length){
@@ -906,16 +957,27 @@
           '<span class="slot-num">' + (item ? "Label " + item.num : "Empty") + '</span>' +
           '<span class="overflow-flag">Over the edge — shrink or trim</span>' +
           '<span class="cut"></span>';
+        const rot = item ? (item.d.textRotate || 0) : 0;
+        const turned = rot === 90 || rot === 270;
+        const box = document.createElement("div");
+        box.className = "protate";
+        box.style.width     = (turned ? sheet.size[1] : sheet.size[0]) + "in";
+        box.style.height    = (turned ? sheet.size[0] : sheet.size[1]) + "in";
+        box.style.transform = "translate(-50%, -50%) rotate(" + rot + "deg)";
+
         const content = document.createElement("div");
         content.className = "pcontent";
-        content.style.margin   = sheet.pad[0] + "in " + sheet.pad[1] + "in";
+        content.style.margin = turned
+          ? sheet.pad[1] + "in " + sheet.pad[0] + "in"
+          : sheet.pad[0] + "in " + sheet.pad[1] + "in";
         content.style.fontSize = sheet.font + "pt";
         if (item){
           content.innerHTML = item.d.html;
           if (item.d.fontSize)   content.style.fontSize   = item.d.fontSize;
           if (item.d.fontFamily) content.style.fontFamily = item.d.fontFamily;
         }
-        lab.appendChild(content);
+        box.appendChild(content);
+        lab.appendChild(box);
         page.appendChild(lab);
       }
 

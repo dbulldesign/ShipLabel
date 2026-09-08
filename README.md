@@ -28,13 +28,21 @@ The Uline measurements are read out of Uline's own Word templates. Anything
 else goes under **Custom size…**, which takes the page size, the grid, the
 label size, the margins and the gaps between labels in inches.
 
-## Portrait and landscape
+## Two kinds of rotation
 
-**Landscape** turns the sheet sideways. The die-cut doesn't move when you
-rotate a sheet, so the whole grid rotates with the paper — the labels still
-line up, but the text now runs along the label's other edge. Feed the sheet
-into the printer rotated to match. For one-per-page stocks it simply swaps the
-media size, so a 4 × 6″ thermal label prints as 6 × 4″.
+**Portrait / Landscape** turns the whole sheet. The die-cut doesn't move when
+you rotate a sheet, so the grid rotates with the paper — the labels still line
+up, but the text now runs along the label's other edge. Feed the sheet into the
+printer rotated to match. For one-per-page stocks it simply swaps the media
+size, so a 4 × 6″ thermal label prints as 6 × 4″.
+
+**⟳ Text** turns the text on one label, leaving the sheet alone. Click it to
+step through 90°, 180° and 270°. It applies to the label you're editing, like
+bold or ↕ Middle, so labels on the same sheet can face different ways — useful
+when a long address only fits down a narrow label. Shrink-to-fit measures the
+turned box, so text is fitted against the edge it actually runs along.
+
+The two combine: a sheet can be landscape and a label on it turned as well.
 
 ## Printing
 
