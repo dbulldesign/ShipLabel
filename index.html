@@ -213,6 +213,7 @@
     text-align:center; line-height:1.25;
     word-wrap:break-word;
   }
+  .pcontent img, .entry-editor img{max-width:100%; vertical-align:middle;}
   .cut{                     /* on-screen guide showing where the label edges are */
     position:absolute; inset:0;
     border:1px dashed #c4c9d2; pointer-events:none;
@@ -388,6 +389,13 @@
     <button class="valign" data-valign="middle" title="Text sits in the middle of the label">⇕</button>
     <button class="valign" data-valign="bottom" title="Text sits at the bottom of the label">⤓</button>
     <button id="rotTextBtn" title="Turn this label's text a quarter turn — click again for 180° and 270°">⟳ Text 0°</button>
+  </div>
+
+  <div class="group" aria-label="Insert">
+    <button id="barcodeBtn" title="Put a Code 128 barcode on this label">▊ Barcode</button>
+    <button id="qrBtn" title="Put a QR code on this label">▦ QR</button>
+    <button id="imageBtn" title="Put a logo or picture on this label">🖼 Image</button>
+    <input type="file" id="imageInput" accept="image/*" style="display:none">
   </div>
 
   <div class="group" aria-label="Ready-made text">
@@ -1044,6 +1052,374 @@
     rotBtn.classList.toggle("is-on", rot !== 0);
   }
 
+  /* ================= Barcodes =================
+     Both encoders are written out here rather than pulled from a CDN, so
+     the page keeps working with no network at all. */
+
+  /* ---------- Code 128 ---------- */
+  const C128 = [
+    "212222","222122","222221","121223","121322","131222","122213","122312","132212","221213",
+    "221312","231212","112232","122132","122231","113222","123122","123221","223211","221132",
+    "221231","213212","223112","312131","311222","321122","321221","312212","322112","322211",
+    "212123","212321","232121","111323","131123","131321","112313","132113","132311","211313",
+    "231113","231311","112133","112331","132131","113123","113321","133121","313121","211331",
+    "231131","213113","213311","213131","311123","311321","331121","312113","312311","332111",
+    "314111","221411","431111","111224","111422","121124","121421","141122","141221","112214",
+    "112412","122114","122411","142112","142211","241211","221114","413111","241112","134111",
+    "111242","121142","121241","114212","124112","124211","411212","421112","421211","212141",
+    "214121","412121","111143","111341","131141","114113","114311","411113","411311","113141",
+    "114131","311141","411131","211412","211214","211232","2331112"
+  ];
+
+  /* Code C packs two digits per symbol, so an all-digit value is half the
+     width; anything else goes out as Code B. */
+  function code128Codes(value){
+    const codes = [];
+    let start;
+    if (/^\d+$/.test(value) && value.length % 2 === 0 && value.length >= 4){
+      start = 105;
+      for (let i = 0; i < value.length; i += 2) codes.push(parseInt(value.substr(i, 2), 10));
+    } else {
+      start = 104;
+      for (let i = 0; i < value.length; i++){
+        const c = value.charCodeAt(i);
+        if (c < 32 || c > 126) throw new Error("A barcode can only hold plain keyboard characters.");
+        codes.push(c - 32);
+      }
+    }
+    let sum = start;
+    codes.forEach((c, i) => { sum += c * (i + 1); });
+    return [start].concat(codes, [sum % 103], [106]);
+  }
+
+  function code128SVG(value){
+    const seq = code128Codes(value);
+    let x = 0, bars = "";
+    seq.forEach(code => {
+      const pat = C128[code];
+      for (let i = 0; i < pat.length; i++){
+        const w = +pat[i];
+        if (i % 2 === 0) bars += '<rect x="' + x + '" y="0" width="' + w + '" height="BARH"/>';
+        x += w;
+      }
+    });
+    const quiet = 10, W = x + quiet*2;
+    const barH  = Math.round(W * 0.22);
+    const capH  = Math.round(W * 0.085);
+    const H     = barH + capH + 2;
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '">' +
+             '<rect width="' + W + '" height="' + H + '" fill="#fff"/>' +
+             '<g transform="translate(' + quiet + ',0)" fill="#000">' +
+               bars.replace(/BARH/g, barH) +
+             '</g>' +
+             '<text x="' + (W/2) + '" y="' + (H - 1) + '" fill="#000" text-anchor="middle" ' +
+               'font-family="monospace" font-size="' + capH + '">' + escapeHTML(value) + '</text>' +
+           '</svg>';
+  }
+
+  /* ---------- QR, byte mode, error correction level M, versions 1-10 ---------- */
+  const QR_CAP    = [16,28,44,64,86,108,124,154,182,216];   // data bytes
+  const QR_ECW    = [10,16,26,18,24,16,18,22,22,26];        // EC words per block
+  const QR_BLOCKS = [1,1,1,2,2,4,4,4,5,5];
+  const QR_ALIGN  = [[],[6,18],[6,22],[6,26],[6,30],[6,34],[6,22,38],[6,24,42],[6,26,46],[6,28,50]];
+
+  const GF_EXP = new Uint8Array(512), GF_LOG = new Uint8Array(256);
+  (function(){
+    let x = 1;
+    for (let i = 0; i < 255; i++){ GF_EXP[i] = x; GF_LOG[x] = i; x <<= 1; if (x & 0x100) x ^= 0x11D; }
+    for (let i = 255; i < 512; i++) GF_EXP[i] = GF_EXP[i - 255];
+  })();
+  const gfMul = (a,b) => (a && b) ? GF_EXP[GF_LOG[a] + GF_LOG[b]] : 0;
+
+  function rsGenerator(n){
+    let g = [1];
+    for (let i = 0; i < n; i++){
+      const next = new Array(g.length + 1).fill(0);
+      for (let j = 0; j < g.length; j++){
+        next[j]     ^= g[j];
+        next[j + 1] ^= gfMul(g[j], GF_EXP[i]);
+      }
+      g = next;
+    }
+    return g;
+  }
+  function rsRemainder(data, ecLen){
+    const gen = rsGenerator(ecLen);
+    const res = data.concat(new Array(ecLen).fill(0));
+    for (let i = 0; i < data.length; i++){
+      const coef = res[i];
+      if (!coef) continue;
+      for (let j = 0; j < gen.length; j++) res[i + j] ^= gfMul(gen[j], coef);
+    }
+    return res.slice(data.length);
+  }
+
+  function qrMatrix(text){
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let ver = 0;
+    while (ver < 10 && bytes.length > QR_CAP[ver]) ver++;
+    if (bytes.length > QR_CAP[9]) throw new Error("That's too long for a QR code — keep it under 216 characters.");
+    const version = ver + 1, cap = QR_CAP[ver], ecLen = QR_ECW[ver], nBlocks = QR_BLOCKS[ver];
+
+    /* --- bit stream --- */
+    const bits = [];
+    const put = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+    put(4, 4);                                   // byte mode
+    put(bytes.length, version < 10 ? 8 : 16);
+    bytes.forEach(b => put(b, 8));
+    for (let i = 0; i < 4 && bits.length < cap * 8; i++) bits.push(0);
+    while (bits.length % 8) bits.push(0);
+    const words = [];
+    for (let i = 0; i < bits.length; i += 8)
+      words.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+    const PADS = [0xEC, 0x11];
+    while (words.length < cap) words.push(PADS[words.length % 2 ? 1 : 0]);
+
+    /* --- split into blocks, add error correction, interleave --- */
+    const shortLen = Math.floor(cap / nBlocks), longCount = cap - shortLen * nBlocks;
+    const dataBlocks = [], ecBlocks = [];
+    let at = 0;
+    for (let i = 0; i < nBlocks; i++){
+      const len = shortLen + (i >= nBlocks - longCount ? 1 : 0);
+      const blk = words.slice(at, at + len); at += len;
+      dataBlocks.push(blk);
+      ecBlocks.push(rsRemainder(blk, ecLen));
+    }
+    const out = [];
+    for (let i = 0; i < shortLen + 1; i++)
+      dataBlocks.forEach(b => { if (i < b.length) out.push(b[i]); });
+    for (let i = 0; i < ecLen; i++)
+      ecBlocks.forEach(b => out.push(b[i]));
+
+    /* --- lay out the modules --- */
+    const size = version * 4 + 17;
+    const m = [], reserved = [];
+    for (let r = 0; r < size; r++){ m.push(new Array(size).fill(0)); reserved.push(new Array(size).fill(false)); }
+    const set = (r, c, v) => { m[r][c] = v ? 1 : 0; reserved[r][c] = true; };
+
+    function finder(r0, c0){
+      for (let r = -1; r <= 7; r++) for (let c = -1; c <= 7; c++){
+        const rr = r0 + r, cc = c0 + c;
+        if (rr < 0 || cc < 0 || rr >= size || cc >= size) continue;
+        const on = (r >= 0 && r <= 6 && (c === 0 || c === 6)) ||
+                   (c >= 0 && c <= 6 && (r === 0 || r === 6)) ||
+                   (r >= 2 && r <= 4 && c >= 2 && c <= 4);
+        set(rr, cc, on);
+      }
+    }
+    finder(0, 0); finder(0, size - 7); finder(size - 7, 0);
+    for (let i = 8; i < size - 8; i++){ set(6, i, i % 2 === 0); set(i, 6, i % 2 === 0); }
+    const AL = QR_ALIGN[ver], lastA = AL.length - 1;
+    AL.forEach((r, ri) => AL.forEach((c, ci) => {
+      /* only the three that would sit on a finder are left out; the ones that
+         cross the timing line are still drawn, and agree with it */
+      if ((ri === 0 && ci === 0) || (ri === 0 && ci === lastA) || (ri === lastA && ci === 0)) return;
+      for (let dr = -2; dr <= 2; dr++) for (let dc = -2; dc <= 2; dc++)
+        set(r + dr, c + dc, Math.max(Math.abs(dr), Math.abs(dc)) !== 1);
+    }));
+    set(size - 8, 8, 1);                                // always-dark module
+    for (let i = 0; i < 9; i++){                        // reserve the format areas
+      if (!reserved[8][i]) set(8, i, 0);
+      if (!reserved[i][8]) set(i, 8, 0);
+    }
+    for (let i = 0; i < 8; i++){
+      if (!reserved[8][size-1-i]) set(8, size-1-i, 0);
+      if (!reserved[size-1-i][8]) set(size-1-i, 8, 0);
+    }
+    if (version >= 7){
+      let v = version;
+      for (let i = 0; i < 12; i++) v = (v << 1) ^ ((v >> 11) * 0x1F25);
+      const info = (version << 12) | v;
+      for (let i = 0; i < 18; i++){
+        const bit = (info >> i) & 1, a = Math.floor(i / 3), bIdx = i % 3;
+        set(a, size - 11 + bIdx, bit);
+        set(size - 11 + bIdx, a, bit);
+      }
+    }
+
+    /* --- zigzag the codewords in --- */
+    let bitIdx = 0, dir = -1, row = size - 1;
+    for (let col = size - 1; col > 0; col -= 2){
+      if (col === 6) col--;                             // the vertical timing line
+      for (;;){
+        for (let i = 0; i < 2; i++){
+          const c = col - i;
+          if (!reserved[row][c]){
+            const byte = out[bitIdx >> 3];
+            m[row][c] = byte === undefined ? 0 : (byte >> (7 - (bitIdx & 7))) & 1;
+            bitIdx++;
+          }
+        }
+        row += dir;
+        if (row < 0 || row >= size){ row -= dir; dir = -dir; break; }
+      }
+    }
+
+    /* --- pick the mask that scores best --- */
+    const MASKS = [
+      (r,c) => (r + c) % 2 === 0,
+      (r,c) => r % 2 === 0,
+      (r,c) => c % 3 === 0,
+      (r,c) => (r + c) % 3 === 0,
+      (r,c) => (Math.floor(r/2) + Math.floor(c/3)) % 2 === 0,
+      (r,c) => (r*c) % 2 + (r*c) % 3 === 0,
+      (r,c) => ((r*c) % 2 + (r*c) % 3) % 2 === 0,
+      (r,c) => ((r+c) % 2 + (r*c) % 3) % 2 === 0
+    ];
+    let best = null, bestScore = Infinity;
+    for (let k = 0; k < 8; k++){
+      const t = m.map(r => r.slice());
+      for (let r = 0; r < size; r++) for (let c = 0; c < size; c++)
+        if (!reserved[r][c] && MASKS[k](r, c)) t[r][c] ^= 1;
+      // format information: level M is 0b00
+      let f = (0 << 3) | k;
+      let d = f;
+      for (let i = 0; i < 10; i++) d = (d << 1) ^ ((d >> 9) * 0x537);
+      const fmt = ((f << 10) | d) ^ 0x5412;
+      for (let i = 0; i < 15; i++){
+        const bit = (fmt >> i) & 1;
+        if (i < 6)        t[i][8] = bit;
+        else if (i === 6) t[7][8] = bit;
+        else if (i === 7) t[8][8] = bit;
+        else if (i === 8) t[8][7] = bit;
+        else              t[8][14 - i] = bit;
+        if (i < 8)        t[8][size - 1 - i] = bit;
+        else              t[size - 15 + i][8] = bit;
+      }
+      const sc = qrPenalty(t, size);
+      if (sc < bestScore){ bestScore = sc; best = t; }
+    }
+    return best;
+  }
+
+  function qrPenalty(m, size){
+    let score = 0, dark = 0;
+    const run = line => {
+      let n = 1, s = 0;
+      for (let i = 1; i < size; i++){
+        if (line[i] === line[i-1]) n++;
+        else { if (n >= 5) s += n - 2; n = 1; }
+      }
+      return s + (n >= 5 ? n - 2 : 0);
+    };
+    for (let r = 0; r < size; r++) score += run(m[r]);
+    for (let c = 0; c < size; c++) score += run(m.map(row => row[c]));
+    for (let r = 0; r < size - 1; r++) for (let c = 0; c < size - 1; c++)
+      if (m[r][c] === m[r][c+1] && m[r][c] === m[r+1][c] && m[r][c] === m[r+1][c+1]) score += 3;
+    const PAT = [1,0,1,1,1,0,1,0,0,0,0];
+    const hit = (get) => {
+      let s = 0;
+      for (let i = 0; i + 11 <= size; i++){
+        let ok = true;
+        for (let j = 0; j < 11; j++) if (get(i + j) !== PAT[j]){ ok = false; break; }
+        if (ok) s += 40;
+      }
+      return s;
+    };
+    for (let r = 0; r < size; r++) score += hit(i => m[r][i]);
+    for (let c = 0; c < size; c++) score += hit(i => m[i][c]);
+    for (let r = 0; r < size; r++) for (let c = 0; c < size; c++) if (m[r][c]) dark++;
+    score += Math.floor(Math.abs(dark * 100 / (size*size) - 50) / 5) * 10;
+    return score;
+  }
+
+  function qrSVG(text){
+    const m = qrMatrix(text), size = m.length, quiet = 4, W = size + quiet*2;
+    let rects = "";
+    for (let r = 0; r < size; r++){
+      let c = 0;
+      while (c < size){
+        if (!m[r][c]){ c++; continue; }
+        let w = 1;
+        while (c + w < size && m[r][c + w]) w++;
+        rects += '<rect x="' + (c + quiet) + '" y="' + (r + quiet) + '" width="' + w + '" height="1"/>';
+        c += w;
+      }
+    }
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + W + '" ' +
+             'shape-rendering="crispEdges">' +
+             '<rect width="' + W + '" height="' + W + '" fill="#fff"/>' +
+             '<g fill="#000">' + rects + '</g></svg>';
+  }
+
+  function barcodeSVG(kind, value){
+    return kind === "qr" ? qrSVG(value) : code128SVG(value);
+  }
+  function barcodeSrc(kind, value){
+    try {
+      return "data:image/svg+xml;charset=utf-8," + encodeURIComponent(barcodeSVG(kind, value));
+    } catch(e){ return ""; }
+  }
+
+  /* ---------- putting one on a label ---------- */
+  function textArea(entry){
+    const rot = parseInt(entry.dataset.rot, 10) || 0;
+    const turned = rot === 90 || rot === 270;
+    const w = (turned ? sheet.size[1] : sheet.size[0]) - 2*(turned ? sheet.pad[0] : sheet.pad[1]);
+    const h = (turned ? sheet.size[0] : sheet.size[1]) - 2*(turned ? sheet.pad[1] : sheet.pad[0]);
+    return [Math.max(0.2, w), Math.max(0.2, h)];
+  }
+  function insertBarcode(kind){
+    if (!ensureActive()) return;
+    const entry = activeEditor.closest(".entry");
+    const seed  = (window.getSelection() || {}).toString ? String(window.getSelection()).trim() : "";
+    const value = prompt(kind === "qr" ? "What should the QR code say?" : "Barcode value (Code 128):", seed);
+    if (value === null || !value.trim()) return;
+    let svg;
+    try { svg = barcodeSVG(kind, value); }
+    catch(err){ alert(err.message || String(err)); return; }
+    const area = textArea(entry);
+    let style;
+    if (kind === "qr"){
+      const side = Math.min(area[0]*0.5, area[1]*0.8);
+      style = "width:" + side.toFixed(2) + "in;height:" + side.toFixed(2) + "in";
+    } else {
+      const aspect = 0.31;                       // the SVG's height ÷ width
+      const w = Math.min(area[0], area[1]*0.5/aspect);
+      style = "width:" + w.toFixed(2) + "in";
+    }
+    insertAtCursor('<img data-bc="' + kind + '" data-val="' + escapeHTML(value).replace(/"/g,"&quot;") +
+                   '" src="' + barcodeSrc(kind, value) + '" style="' + style + '">');
+  }
+  document.getElementById("barcodeBtn").addEventListener("click", () => insertBarcode("128"));
+  document.getElementById("qrBtn").addEventListener("click", () => insertBarcode("qr"));
+
+  /* ---------- a logo or picture ---------- */
+  const imageInput = document.getElementById("imageInput");
+  document.getElementById("imageBtn").addEventListener("click", () => {
+    if (!ensureActive()) return;
+    imageInput.value = "";
+    imageInput.click();
+  });
+  imageInput.addEventListener("change", () => {
+    const file = imageInput.files && imageInput.files[0];
+    if (!file || !activeEditor) return;
+    const entry = activeEditor.closest(".entry");
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        /* big camera files are scaled down so the saved sheet stays small */
+        const MAX = 1200;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width  = Math.max(1, Math.round(img.width * scale));
+        cv.height = Math.max(1, Math.round(img.height * scale));
+        const ctx = cv.getContext("2d");
+        ctx.drawImage(img, 0, 0, cv.width, cv.height);
+        const png = /png/i.test(file.type);
+        const src = cv.toDataURL(png ? "image/png" : "image/jpeg", 0.85);
+        const area = textArea(entry);
+        const w = Math.min(area[0]*0.5, area[1]*0.6 * (cv.width/cv.height));
+        activeEditor.focus();
+        insertAtCursor('<img data-img="1" src="' + src + '" style="width:' + w.toFixed(2) + 'in">');
+      };
+      img.onerror = () => alert("That image couldn't be read.");
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
   /* ================= Ready-made text ================= */
   const BUILT_IN = [
     ["FRAGILE",                "FRAGILE"],
@@ -1381,7 +1757,7 @@
 
   /* ================= Sanitize loaded HTML ================= */
   function sanitizeHTML(html){
-    const allowedTags = new Set(["DIV","SPAN","BR","B","STRONG","I","EM","U","FONT","P"]);
+    const allowedTags = new Set(["DIV","SPAN","BR","B","STRONG","I","EM","U","FONT","P","IMG"]);
     const tpl = document.createElement("template");
     tpl.innerHTML = html || "";
     (function walk(node){
@@ -1391,6 +1767,7 @@
           el.replaceWith(...el.childNodes);
           return;
         }
+        if (el.tagName === "IMG"){ cleanImage(el); return; }
         Array.from(el.attributes).forEach(attr => {
           if (attr.name === "style"){
             const ok = ["font-size","font-family","font-weight","font-style",
@@ -1406,6 +1783,33 @@
       });
     })(tpl.content);
     return tpl.innerHTML;
+  }
+
+  /* Barcodes are redrawn from their value, so a file can never hand us the
+     picture; pasted-in pictures have to be plain raster data. */
+  const IMG_DATA = /^data:image\/(png|jpeg|gif|webp);base64,[A-Za-z0-9+/=\s]+$/i;
+  function cleanImage(el){
+    const kind = el.getAttribute("data-bc");
+    const val  = el.getAttribute("data-val");
+    const size = (el.getAttribute("style") || "").split(";")
+      .map(t => t.trim())
+      .filter(t => /^(width|height)\s*:/i.test(t)).join("; ");
+    const src  = el.getAttribute("src") || "";
+    let keep;
+    if (kind === "qr" || kind === "128"){
+      keep = barcodeSrc(kind, val || "");
+      if (!keep){ el.remove(); return; }
+    } else if (el.getAttribute("data-img") && IMG_DATA.test(src.replace(/\s+/g,""))){
+      keep = src;
+    } else {
+      el.remove();
+      return;
+    }
+    Array.from(el.attributes).forEach(a => el.removeAttribute(a.name));
+    if (kind){ el.setAttribute("data-bc", kind); el.setAttribute("data-val", val || ""); }
+    else el.setAttribute("data-img", "1");
+    el.setAttribute("src", keep);
+    if (size) el.setAttribute("style", size);
   }
 
   /* ================= Print: all / one / selection ================= */
