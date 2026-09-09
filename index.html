@@ -36,8 +36,16 @@
     background:linear-gradient(var(--panel), var(--desk-2));
     border-bottom:1px solid var(--panel-edge);
     padding:10px 16px;
-    display:flex; flex-wrap:wrap; gap:10px; align-items:center;
+    display:flex; flex-direction:column; gap:8px;
   }
+  .bar{display:flex; flex-wrap:wrap; gap:10px; align-items:center;}
+  #startSlot{
+    width:56px; background:var(--desk); color:var(--ink);
+    border:1px solid var(--panel-edge); border-radius:6px;
+    padding:5px 6px; font:inherit; text-align:center;
+  }
+  button[disabled]{opacity:.4; cursor:default;}
+  button[disabled]:hover{background:transparent;}
   .brand{display:flex; flex-direction:column; margin-right:8px; user-select:none;}
   .brand b{font-size:14px; letter-spacing:.06em; text-transform:uppercase;}
   .brand span{font-size:11px; color:var(--ink-dim); letter-spacing:.04em;}
@@ -207,6 +215,11 @@
     border:1px dashed #c4c9d2; pointer-events:none;
   }
   .plabel.tiny .slot-num{display:none;}
+  .testgrid .plabel.tiny .slot-num{display:block;}
+  .testgrid .cut{border-color:#000;}
+  .testgrid .tick{
+    position:absolute; background:#000;
+  }
   .plabel.tiny .overflow-flag{font-size:9px; padding:3px 5px;}
   .page-tag{
     position:absolute; bottom:-0px; right:6px;
@@ -294,12 +307,16 @@
     .page:last-child{page-break-after:auto;}
     .page-wrap.last-print .page{page-break-after:auto;}
     .pcontent:empty::before{content:"";}
+    /* the alignment test sheet prints exactly what the screen guides show */
+    .testgrid .cut{display:block !important; border:1px solid #000;}
+    .testgrid .slot-num{display:block !important; color:#000;}
   }
 </style>
 </head>
 <body>
 
 <header class="topbar">
+ <div class="bar">
   <div class="brand">
     <b>Label Sheets</b>
     <span id="stockNote">S-5049G · two 8½ × 5½″ labels per page</span>
@@ -315,6 +332,28 @@
     <button id="landscapeBtn" title="Turn the sheet sideways — feed it into the printer rotated, and the text runs along the label's other edge">▭ Landscape</button>
   </div>
 
+  <div class="group" aria-label="First label">
+    <label class="field-label" for="startSlot">Start at</label>
+    <input type="number" id="startSlot" min="1" value="1" title="Skip labels already peeled off a part-used sheet — printing starts at this position on the first sheet">
+    <span class="field-label" id="startNote">of 2</span>
+  </div>
+
+  <div class="group" aria-label="Sheet tools">
+    <button id="nudgeBtn" title="Shift everything a hair to line up with your printer">⇔ Align</button>
+    <button id="importBtn" title="Make labels in bulk from a pasted list or a CSV file">📋 Import</button>
+    <button id="newBtn" title="Clear everything and start a fresh sheet">🗑 New</button>
+  </div>
+
+  <div class="spacer"></div>
+  <div class="group print-group" aria-label="Print">
+    <label class="range-label" for="printRange">Pages</label>
+    <input type="text" id="printRange" placeholder="All" title="Which sheets to print or export. Examples:  All  ·  2  ·  1,3  ·  2-4">
+    <button id="pdfBtn" title="Save the selected sheets as a PDF file">⬇ PDF</button>
+    <button class="print-btn" id="printBtn">🖨 Print</button>
+  </div>
+ </div>
+
+ <div class="bar">
   <div class="group" role="toolbar" aria-label="Text style">
     <button class="b" data-cmd="bold" title="Bold (Ctrl+B)">B</button>
     <button class="i" data-cmd="italic" title="Italic (Ctrl+I)">I</button>
@@ -347,6 +386,7 @@
   </div>
 
   <div class="group" aria-label="Save and load">
+    <button id="undoBtn" title="Bring back the label you just deleted" disabled>↩ Undo</button>
     <button id="saveBtn" title="Download all labels as a file you can re-open later">💾 Save</button>
     <button id="openBtn" title="Upload a previously saved label file">📂 Open</button>
     <input type="file" id="openInput" accept=".json,application/json" style="display:none">
@@ -357,14 +397,7 @@
     <span class="pill" aria-hidden="true"></span>
     <small>Shrink to fit</small>
   </label>
-
-  <div class="spacer"></div>
-  <div class="group print-group" aria-label="Print">
-    <label class="range-label" for="printRange">Pages</label>
-    <input type="text" id="printRange" placeholder="All" title="Which sheets to print or export. Examples:  All  ·  2  ·  1,3  ·  2-4">
-    <button id="pdfBtn" title="Save the selected sheets as a PDF file">⬇ PDF</button>
-    <button class="print-btn" id="printBtn">🖨 Print</button>
-  </div>
+ </div>
 
   <div class="custombar" id="customBar" hidden>
     <span class="cb-title">Custom size (inches)</span>
@@ -382,6 +415,15 @@
     <label>Font pt <input id="cFont"      type="number" step="1"    min="6" max="200" value="14"></label>
     <button class="apply-btn" id="applyCustom">Apply</button>
     <span class="cb-note" id="customNote"></span>
+  </div>
+
+  <div class="custombar" id="nudgeBar" hidden>
+    <span class="cb-title">Printer alignment (inches)</span>
+    <label>Shift right <input id="nudgeX" type="number" step="0.01" value="0"></label>
+    <label>Shift down <input id="nudgeY" type="number" step="0.01" value="0"></label>
+    <button id="testGridBtn" title="Print an outline of every label so you can hold it against a real sheet">🖨 Print test grid</button>
+    <button id="resetNudge">Reset</button>
+    <span class="cb-note" id="nudgeNote">Remembered per label type. Negative numbers shift the other way.</span>
   </div>
 </header>
 
@@ -599,10 +641,93 @@
       localStorage.setItem(STOCK_KEY, stock.id);
       localStorage.setItem(ORIENT_KEY, orientation);
     } catch(e){}
+    loadNudge();
     if (!opts || !opts.silent) render();
   }
 
   stockSel.addEventListener("change", () => applyStock(stockSel.value));
+
+  /* ---------- start on a part-used sheet ---------- */
+  const startSlotInput = document.getElementById("startSlot");
+  const startNote      = document.getElementById("startNote");
+  function startSkip(){
+    const n = parseInt(startSlotInput.value, 10);
+    return n >= 2 ? Math.min(n, perPage()) - 1 : 0;
+  }
+  startSlotInput.addEventListener("input", queueRender);
+
+  /* ---------- printer alignment ---------- */
+  const nudgeBar  = document.getElementById("nudgeBar");
+  const nudgeBtn  = document.getElementById("nudgeBtn");
+  const nudgeXIn  = document.getElementById("nudgeX");
+  const nudgeYIn  = document.getElementById("nudgeY");
+  const NUDGE_KEY = "shiplabel.nudge.";
+  let nudge = { x:0, y:0 };
+  let testGrid = false;
+
+  /* kept per label type and per orientation, since the drift you are
+     correcting depends on how the sheet goes through the printer */
+  function nudgeKey(){ return NUDGE_KEY + stock.id + "." + orientation; }
+  function loadNudge(){
+    nudge = { x:0, y:0 };
+    try {
+      const raw = localStorage.getItem(nudgeKey());
+      if (raw){ const v = JSON.parse(raw); nudge = { x:(+v.x || 0), y:(+v.y || 0) }; }
+    } catch(e){}
+    nudgeXIn.value = nudge.x;
+    nudgeYIn.value = nudge.y;
+  }
+  function saveNudge(){
+    nudge = { x:(parseFloat(nudgeXIn.value) || 0), y:(parseFloat(nudgeYIn.value) || 0) };
+    try { localStorage.setItem(nudgeKey(), JSON.stringify(nudge)); } catch(e){}
+    queueRender();
+  }
+  nudgeXIn.addEventListener("input", saveNudge);
+  nudgeYIn.addEventListener("input", saveNudge);
+  document.getElementById("resetNudge").addEventListener("click", () => {
+    nudgeXIn.value = 0; nudgeYIn.value = 0; saveNudge();
+  });
+  nudgeBtn.addEventListener("click", () => {
+    nudgeBar.hidden = !nudgeBar.hidden;
+    nudgeBtn.classList.toggle("is-on", !nudgeBar.hidden);
+  });
+  document.getElementById("testGridBtn").addEventListener("click", () => {
+    testGrid = true;
+    render();
+    setTimeout(() => printPages(new Set([1])), 150);
+  });
+  window.addEventListener("afterprint", () => {
+    if (testGrid){ testGrid = false; render(); }
+  });
+
+  /* ---------- keep the work if the tab closes ---------- */
+  const AUTOSAVE_KEY = "shiplabel.autosave";
+  let autosaveOff = false;
+  function autosave(){
+    if (autosaveOff) return;
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(sheetData())); }
+    catch(e){ autosaveOff = true; }      // storage full: carry on without it
+  }
+  function restoreAutosave(){
+    let data = null;
+    try {
+      const raw = localStorage.getItem(AUTOSAVE_KEY);
+      if (raw) data = JSON.parse(raw);
+    } catch(e){ return false; }
+    if (!data || !Array.isArray(data.entries)) return false;
+    if (!data.entries.some(e => (e.html || "").trim())) return false;
+    try { loadSheet(data); return true; } catch(e){ return false; }
+  }
+  document.getElementById("newBtn").addEventListener("click", () => {
+    const used = allEntries().some(e => e.querySelector(".entry-editor").innerText.trim());
+    if (used && !confirm("Clear all labels and start a new sheet?")) return;
+    entriesList.innerHTML = "";
+    activeEditor = null;
+    entriesList.appendChild(makeEntry());
+    startSlotInput.value = 1;
+    try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e){}
+    render();
+  });
 
   /* ---------- custom size ---------- */
   const cIn = id => document.getElementById(id);
@@ -919,7 +1044,11 @@
 
     const labels = flattenedLabels();
     const slots = perPage();
-    const pageTotal = Math.max(1, Math.ceil(labels.length / slots));
+    startSlotInput.max = slots;
+    startNote.textContent = "of " + slots;
+    if (parseInt(startSlotInput.value, 10) > slots) startSlotInput.value = slots;
+    const skip = startSkip();
+    const pageTotal = Math.max(1, Math.ceil((labels.length + skip) / slots));
     pageCount.textContent = pageTotal + (pageTotal === 1 ? " page" : " pages");
 
     pagesEl.innerHTML = "";
@@ -937,24 +1066,25 @@
       bar.appendChild(oneBtn);
 
       const page = document.createElement("div");
-      page.className = "page";
+      page.className = "page" + (testGrid ? " testgrid" : "");
       page.style.width  = sheet.page[0] + "in";
       page.style.height = sheet.page[1] + "in";
 
       for (let s = 0; s < slots; s++){
-        const item = labels[p*slots + s];
+        const item = labels[p*slots + s - skip];
         const col  = s % sheet.grid[0];
         const row  = Math.floor(s / sheet.grid[0]);
         const lab = document.createElement("div");
         lab.className = "plabel";
-        lab.style.left   = (sheet.margin[0] + col*(sheet.size[0] + sheet.gutter[0])) + "in";
-        lab.style.top    = (sheet.margin[1] + row*(sheet.size[1] + sheet.gutter[1])) + "in";
+        lab.style.left   = (sheet.margin[0] + col*(sheet.size[0] + sheet.gutter[0]) + nudge.x) + "in";
+        lab.style.top    = (sheet.margin[1] + row*(sheet.size[1] + sheet.gutter[1]) + nudge.y) + "in";
         lab.style.width  = sheet.size[0] + "in";
         lab.style.height = sheet.size[1] + "in";
         if (sheet.size[1] < 1.6) lab.classList.add("tiny");
         if (item && item.d.vCenter) lab.classList.add("v-center");
         lab.innerHTML =
-          '<span class="slot-num">' + (item ? "Label " + item.num : "Empty") + '</span>' +
+          '<span class="slot-num">' +
+            (testGrid ? "#" + (s+1) : item ? "Label " + item.num : "Empty") + '</span>' +
           '<span class="overflow-flag">Over the edge — shrink or trim</span>' +
           '<span class="cut"></span>';
         const rot = item ? (item.d.textRotate || 0) : 0;
@@ -990,6 +1120,7 @@
     }
     scalePages();
     fitAll();
+    autosave();
   }
 
   function scalePages(){
@@ -1038,6 +1169,7 @@
       savedAt: new Date().toISOString(),
       stock: stock.id,
       orientation: orientation,
+      startSlot: parseInt(startSlotInput.value, 10) || 1,
       entries: allEntries().map(entryData)
     };
     if (stock.id === "custom"){
@@ -1079,30 +1211,34 @@
     const reader = new FileReader();
     reader.onload = () => {
       try{
-        const data = JSON.parse(reader.result);
-        const known = data.app === "shiplabel-sheet" || data.app === "s5049g-label-sheet";
-        let list = null;
-        if (known && Array.isArray(data.entries)) list = data.entries;
-        else if (known && Array.isArray(data.labels))
-          list = data.labels.filter(L => (L.html || "").trim()); // old single-sheet files
-        if (!list) throw new Error("wrong format");
-        entriesList.innerHTML = "";
-        activeEditor = null;
-        list.forEach(L => entriesList.appendChild(makeEntry(L)));
-        // files without a stock came from the S-5049G-only version
-        if (data.customStock && data.stock === "custom"){
-          setCustom(data.customStock);
-          fieldsFromCustom(data.customStock);
-        }
-        orientation = data.orientation === "landscape" ? "landscape" : "portrait";
-        applyStock(findStock(data.stock) ? data.stock : "s5049g", { silent:true });
-        queueRender();
+        loadSheet(JSON.parse(reader.result));
       }catch(err){
         alert("That file doesn't look like a saved label file from this app.");
       }
     };
     reader.readAsText(file);
   });
+
+  function loadSheet(data){
+    const known = data.app === "shiplabel-sheet" || data.app === "s5049g-label-sheet";
+    let list = null;
+    if (known && Array.isArray(data.entries)) list = data.entries;
+    else if (known && Array.isArray(data.labels))
+      list = data.labels.filter(L => (L.html || "").trim()); // old single-sheet files
+    if (!list) throw new Error("wrong format");
+    entriesList.innerHTML = "";
+    activeEditor = null;
+    list.forEach(L => entriesList.appendChild(makeEntry(L)));
+    // files without a stock came from the S-5049G-only version
+    if (data.customStock && data.stock === "custom"){
+      setCustom(data.customStock);
+      fieldsFromCustom(data.customStock);
+    }
+    orientation = data.orientation === "landscape" ? "landscape" : "portrait";
+    applyStock(findStock(data.stock) ? data.stock : "s5049g", { silent:true });
+    startSlotInput.value = Math.max(1, parseInt(data.startSlot, 10) || 1);
+    queueRender();
+  }
 
   /* ================= Sanitize loaded HTML ================= */
   function sanitizeHTML(html){
@@ -1306,7 +1442,7 @@
     if (res.geom) setCustom(res.geom); else startId = "s5049g";
   }
   applyStock(findStock(startId) ? startId : "s5049g", { silent:true });
-  entriesList.appendChild(makeEntry());
+  if (!restoreAutosave()) entriesList.appendChild(makeEntry());
   render();
   window.addEventListener("load", () => { scalePages(); fitAll(); });
 })();
