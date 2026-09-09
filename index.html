@@ -270,6 +270,13 @@
   }
   .custombar .apply-btn:hover{filter:brightness(1.08); background:var(--accent);}
   .cb-note{font-size:12px; color:var(--warn);}
+  .custombar .cb-check{gap:6px;}
+  #importText{
+    flex:1 0 100%; min-height:104px; resize:vertical;
+    background:var(--desk); color:var(--ink);
+    border:1px solid var(--panel-edge); border-radius:8px;
+    padding:8px 10px; font:inherit; font-size:13px;
+  }
   .print-group input{
     width:70px; background:var(--desk); color:var(--ink);
     border:1px solid var(--panel-edge); border-radius:7px;
@@ -436,6 +443,22 @@
     <label>Font pt <input id="cFont"      type="number" step="1"    min="6" max="200" value="14"></label>
     <button class="apply-btn" id="applyCustom">Apply</button>
     <span class="cb-note" id="customNote"></span>
+  </div>
+
+  <div class="custombar" id="importBar" hidden>
+    <span class="cb-title">Make labels from a list</span>
+    <select id="importMode" title="How the pasted text is split into labels">
+      <option value="line">Each line is one label</option>
+      <option value="blank">Blank line between labels</option>
+      <option value="csv">CSV / TSV row is one label</option>
+    </select>
+    <label class="cb-check"><input type="checkbox" id="importHead"> First row is headings</label>
+    <label class="cb-check"><input type="checkbox" id="importReplace"> Replace the labels I have</label>
+    <button id="importFileBtn">📄 Choose a file…</button>
+    <input type="file" id="importFile" accept=".csv,.tsv,.txt,text/csv,text/plain" style="display:none">
+    <button class="apply-btn" id="doImport">Create labels</button>
+    <span class="cb-note" id="importNote"></span>
+    <textarea id="importText" placeholder="Paste your addresses here — one per line, or a whole spreadsheet column."></textarea>
   </div>
 
   <div class="custombar" id="nudgeBar" hidden>
@@ -1505,6 +1528,89 @@
     buildPresets();
   });
   buildPresets();
+
+  /* ================= Bulk import ================= */
+  const importBar  = document.getElementById("importBar");
+  const importText = document.getElementById("importText");
+  const importNote = document.getElementById("importNote");
+  const importMode = document.getElementById("importMode");
+  const importFile = document.getElementById("importFile");
+
+  document.getElementById("importBtn").addEventListener("click", () => {
+    importBar.hidden = !importBar.hidden;
+    document.getElementById("importBtn").classList.toggle("is-on", !importBar.hidden);
+    if (!importBar.hidden) importText.focus();
+  });
+  document.getElementById("importFileBtn").addEventListener("click", () => {
+    importFile.value = "";
+    importFile.click();
+  });
+  importFile.addEventListener("change", () => {
+    const f = importFile.files && importFile.files[0];
+    if (!f) return;
+    if (/\.(csv|tsv)$/i.test(f.name)) importMode.value = "csv";
+    const r = new FileReader();
+    r.onload = () => { importText.value = r.result; importNote.textContent = f.name + " loaded — check it and press Create labels."; };
+    r.readAsText(f);
+  });
+
+  /* a small CSV reader: handles quoted fields, doubled quotes and tabs */
+  function parseDelimited(text){
+    const rows = [];
+    let row = [], field = "", quoted = false;
+    const delim = text.indexOf("\t") >= 0 && text.indexOf(",") < 0 ? "\t" : ",";
+    for (let i = 0; i < text.length; i++){
+      const ch = text[i];
+      if (quoted){
+        if (ch === '"'){
+          if (text[i+1] === '"'){ field += '"'; i++; }
+          else quoted = false;
+        } else field += ch;
+      } else if (ch === '"'){ quoted = true; }
+      else if (ch === delim){ row.push(field); field = ""; }
+      else if (ch === "\n"){ row.push(field); rows.push(row); row = []; field = ""; }
+      else if (ch !== "\r"){ field += ch; }
+    }
+    if (field.length || row.length){ row.push(field); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim()));
+  }
+
+  function importedLabels(){
+    const text = importText.value;
+    if (!text.trim()) return [];
+    const mode = importMode.value;
+    let blocks;
+    if (mode === "csv"){
+      let rows = parseDelimited(text);
+      if (document.getElementById("importHead").checked) rows = rows.slice(1);
+      blocks = rows.map(r => r.map(c => c.trim()).filter(Boolean));
+    } else if (mode === "blank"){
+      blocks = text.split(/\n\s*\n/).map(b => b.split(/\n/).map(l => l.trim()).filter(Boolean));
+    } else {
+      let lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+      if (document.getElementById("importHead").checked) lines = lines.slice(1);
+      blocks = lines.map(l => [l]);
+    }
+    return blocks.filter(b => b.length)
+                 .map(b => b.map(escapeHTML).join("<br>"));
+  }
+
+  document.getElementById("doImport").addEventListener("click", () => {
+    const made = importedLabels();
+    if (!made.length){ importNote.textContent = "Nothing to import — paste some text first."; return; }
+    const replace = document.getElementById("importReplace").checked;
+    const existing = allEntries();
+    const onlyBlank = existing.length === 1 &&
+      !existing[0].querySelector(".entry-editor").innerText.trim();
+    if (replace || onlyBlank){
+      entriesList.innerHTML = "";
+      activeEditor = null;
+    }
+    made.forEach(html => entriesList.appendChild(makeEntry({ html: html })));
+    importNote.textContent = "Made " + made.length + (made.length === 1 ? " label." : " labels.");
+    importText.value = "";
+    render();
+  });
 
   /* ================= Preview build ================= */
   let renderTimer = null;

@@ -44,7 +44,44 @@ turned box, so text is fitted against the edge it actually runs along.
 
 The two combine: a sheet can be landscape and a label on it turned as well.
 
+## Making labels
+
+**Type them** one at a time, or press **📋 Import** to make a batch from a
+pasted list or a CSV/TSV file — one label per line, blank lines separating
+multi-line addresses, or one label per spreadsheet row.
+
+**× copies** repeats a label. Put `{n}` and `{of}` in the text and each copy is
+numbered, so one entry set to 12 copies prints BOX 1 OF 12 through BOX 12 OF 12.
+
+**▊ Barcode** and **▦ QR** put a real, scannable code on the label. Both are
+generated inside the page, so they work with no internet. Code 128 takes any
+plain keyboard text; QR holds up to 216 characters, including accents. A saved
+sheet stores the *value*, and the picture is always redrawn from it.
+
+**🖼 Image** drops in a logo or photo. Big pictures are scaled down so saved
+sheets stay small; PNGs keep their transparency.
+
+**Insert…** has the usual shipping marks (FRAGILE, THIS SIDE UP and so on), and
+**＋ Block** keeps the current label's text as a named block — a return address,
+say — to reuse on any later label.
+
+Text can sit at the **top, middle or bottom** of the label, and **⟳ Text** turns
+it a quarter turn at a time.
+
+Work is **saved as you go** and comes back when you reopen the page. **💾 Save**
+writes a file you can keep or send on; **🗑 New** starts a clean sheet; **↩ Undo**
+brings back a label you deleted.
+
 ## Printing
+
+**Start at** lets you finish a part-used sheet: set it to the first label still
+on the sheet and printing skips the ones already peeled off.
+
+**⇔ Align** shifts everything by hundredths of an inch to correct a printer that
+prints slightly off, remembered per label type and orientation. **Print test
+grid** puts the label outlines on paper so you can hold a real sheet against it.
+
+
 
 Print at 100% / "Actual size" with page scaling off, and check the first sheet
 against a blank one before committing a stack of labels.
