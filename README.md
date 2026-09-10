@@ -22,6 +22,8 @@ page size and the PDF export all follow it.
 | Avery 5164 | 4 × 3⅓″ | 6 | Letter |
 | Avery 5162 | 4 × 1⅓″ | 14 | Letter |
 | Avery 5161 | 4 × 1″ | 20 | Letter |
+| Dymo Small | 3½ × 1⅛″ | 1 | Roll, one per label |
+| Dymo Large | 4 × 2⅛″ | 1 | Roll, one per label |
 | Thermal | 4 × 6″ and 4 × 2″ | 1 | One label per page |
 
 The Uline measurements are read out of Uline's own Word templates. Anything
@@ -74,6 +76,15 @@ note in the label's bar tells you which way it will come out of the printer.
 Work is **saved as you go** and comes back when you reopen the page. **💾 Save**
 writes a file you can keep or send on; **🗑 New** starts a clean sheet; **↩ Undo**
 brings back a label you deleted.
+
+### Dymo and other roll printers
+
+A Dymo LabelWriter that is installed on the computer (including a wireless one
+joined to your network) shows up in the browser's print dialog like any other
+printer — pick it under 🖨 Print. Choose the matching **Dymo Small** or **Dymo
+Large** label type first so the page is exactly one label, and set the same
+label size in the Dymo driver. If a label comes out turned the wrong way,
+**▭ Landscape** flips it.
 
 ## Printing
 
