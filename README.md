@@ -66,7 +66,10 @@ sheets stay small; PNGs keep their transparency.
 say — to reuse on any later label.
 
 Text can sit at the **top, middle or bottom** of the label, and **⟳ Text** turns
-it a quarter turn at a time.
+it a quarter turn at a time. While you are typing in a turned label the card
+swings upright so you can read what you are writing — the line breaks stay
+exactly as they will print — and it turns back as soon as you click away. The
+note in the label's bar tells you which way it will come out of the printer.
 
 Work is **saved as you go** and comes back when you reopen the page. **💾 Save**
 writes a file you can keep or send on; **🗑 New** starts a clean sheet; **↩ Undo**
