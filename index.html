@@ -167,9 +167,44 @@
     box-shadow:0 2px 10px rgba(0,0,0,.35);
     transition:width .18s ease, height .18s ease;
   }
+  /* carries the label's rotation; the text boxes sit inside it */
+  .entry-rot{position:absolute; left:50%; top:50%; transition:transform .18s ease;}
+  .eblock{
+    position:absolute; box-sizing:border-box;
+    outline:calc(1px * var(--cz,1)) dashed rgba(0,0,0,.22);
+  }
+  .eblock.on{outline-color:var(--accent);}
+  .eblock .grip, .eblock .bdel, .eblock .rsz{
+    position:absolute; z-index:2;
+    opacity:0; transition:opacity .12s;
+    background:var(--accent); color:var(--accent-ink);
+    font:700 calc(9px * var(--cz,1))/1 -apple-system,"Segoe UI",Roboto,sans-serif;
+    display:flex; align-items:center; justify-content:center;
+    border:none; padding:0; border-radius:calc(3px * var(--cz,1));
+  }
+  .eblock:hover .grip, .eblock:hover .bdel, .eblock:hover .rsz,
+  .eblock.on .grip,   .eblock.on .bdel,   .eblock.on .rsz{opacity:1;}
+  .eblock .grip{
+    left:0; top:calc(-13px * var(--cz,1));
+    height:calc(12px * var(--cz,1)); padding:0 calc(6px * var(--cz,1));
+    cursor:move; letter-spacing:.08em;
+  }
+  .eblock .bdel{
+    right:0; top:calc(-13px * var(--cz,1));
+    height:calc(12px * var(--cz,1)); width:calc(14px * var(--cz,1));
+    cursor:pointer;
+  }
+  .eblock .rsz{
+    right:calc(-4px * var(--cz,1)); bottom:calc(-4px * var(--cz,1));
+    width:calc(10px * var(--cz,1)); height:calc(10px * var(--cz,1));
+    cursor:nwse-resize;
+  }
+  .entry.dragging .entry-canvas, .entry.dragging .entry-rot{transition:none;}
+  .eblock[data-valign="middle"] .entry-editor{display:flex; flex-direction:column; justify-content:center;}
+  .eblock[data-valign="bottom"] .entry-editor{display:flex; flex-direction:column; justify-content:flex-end;}
   .entry-editor{
-    /* the text box, turned by the label's own rotation (set inline) */
-    position:absolute; left:50%; top:50%;
+    /* one text box; it fills the block it lives in */
+    position:absolute; inset:0;
     color:#000;
     outline:none;
     font-family:Arial, Helvetica, sans-serif;
@@ -203,10 +238,15 @@
   /* holds the label's text and carries its rotation; sized to the label,
      or to the label turned on its side */
   .protate{position:absolute; left:50%; top:50%; display:flex;}
-  .plabel.v-middle .pcontent{display:flex; flex-direction:column; justify-content:center;}
-  .plabel.v-bottom .pcontent{display:flex; flex-direction:column; justify-content:flex-end;}
-  .entry-editor.v-middle{display:flex; flex-direction:column; justify-content:center;}
-  .entry-editor.v-bottom{display:flex; flex-direction:column; justify-content:flex-end;}
+  .pblock{position:absolute; display:flex; overflow:hidden;}
+  .pblock.v-middle .pcontent{display:flex; flex-direction:column; justify-content:center;}
+  .pblock.v-bottom .pcontent{display:flex; flex-direction:column; justify-content:flex-end;}
+  .shrunk-flag{
+    position:absolute; bottom:6px; right:10px;
+    background:#e8ecf3; color:#5a6273;
+    font:11px/1 -apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:4px 7px; border-radius:5px; pointer-events:none;
+  }
   .pcontent{
     flex:1; overflow:hidden;
     font-family:Arial, Helvetica, sans-serif;
@@ -301,7 +341,7 @@
   /* the real @page size is written into #pageStyle for the chosen label type */
   @media print{
     body{background:#fff;}
-    .topbar, .entries-panel, .panel-head, .cut, .slot-num,
+    .topbar, .entries-panel, .panel-head, .cut, .slot-num, .shrunk-flag,
     .overflow-flag, .page-tag, .page-gap, .page-bar{display:none !important;}
     .page-wrap.no-print{display:none !important;}
     .app{display:block; min-height:0;}
@@ -403,6 +443,7 @@
     <button id="barcodeBtn" title="Put a Code 128 barcode on this label">▊ Barcode</button>
     <button id="qrBtn" title="Put a QR code on this label">▦ QR</button>
     <button id="imageBtn" title="Put a logo or picture on this label">🖼 Image</button>
+    <button id="addBlockBtn" title="Add another text box to this label — drag it where you want it">＋ Text box</button>
     <input type="file" id="imageInput" accept="image/*" style="display:none">
   </div>
 
@@ -410,7 +451,7 @@
     <select id="presetSel" title="Drop a ready-made block of text into this label">
       <option value="">Insert…</option>
     </select>
-    <button id="saveBlockBtn" title="Keep this label's text as a reusable block">＋ Block</button>
+    <button id="saveBlockBtn" title="Keep this text box's contents for reuse on other labels">＋ Preset</button>
     <button id="delBlockBtn" title="Delete the saved block chosen above">✕</button>
   </div>
 
@@ -764,11 +805,13 @@
       if (raw) data = JSON.parse(raw);
     } catch(e){ return false; }
     if (!data || !Array.isArray(data.entries)) return false;
-    if (!data.entries.some(e => (e.html || "").trim())) return false;
+    const hasText = e => (e.html || "").trim() ||
+      (Array.isArray(e.blocks) && e.blocks.some(b => (b.html || "").trim()));
+    if (!data.entries.some(hasText)) return false;
     try { loadSheet(data); return true; } catch(e){ return false; }
   }
   document.getElementById("newBtn").addEventListener("click", () => {
-    const used = allEntries().some(e => e.querySelector(".entry-editor").innerText.trim());
+    const used = allEntries().some(e => e.innerText.trim());
     if (used && !confirm("Clear all labels and start a new sheet?")) return;
     entriesList.innerHTML = "";
     activeEditor = null;
@@ -857,45 +900,38 @@
         '<button data-act="del" title="Delete this label">✕</button>' +
       '</span>';
 
-    const ed = document.createElement("div");
-    ed.className = "entry-editor";
-    ed.contentEditable = "true";
-    ed.spellcheck = false;
-    ed.innerHTML = sanitizeHTML(data.html || "");
-    if (data.fontSize)   ed.style.fontSize   = data.fontSize;
-    if (data.fontFamily) ed.style.fontFamily = data.fontFamily;
-
+    const layer = document.createElement("div");
+    layer.className = "entry-rot";
     const canvas = document.createElement("div");
     canvas.className = "entry-canvas";
-    canvas.appendChild(ed);
+    canvas.appendChild(layer);
 
     entry.appendChild(bar);
     entry.appendChild(canvas);
 
-    ed.addEventListener("focus", () => {
-      activeEditor = ed;
-      document.querySelectorAll(".entry").forEach(el =>
-        el.classList.toggle("focused", el === entry));
-      syncVBtn();
-      syncRotBtn();
-      styleEditor(entry);
-    });
-    ed.addEventListener("blur", () => styleEditor(entry));
-    ed.addEventListener("input", queueRender);
-    ed.addEventListener("paste", e => {
-      e.preventDefault();
-      const text = (e.clipboardData || window.clipboardData).getData("text/plain");
-      document.execCommand("insertText", false, text);
-    });
+    /* older files hold one run of text; it becomes one box filling the label */
+    const blocks = Array.isArray(data.blocks) && data.blocks.length
+      ? data.blocks
+      : [Object.assign(defaultRect(), {
+          html: data.html || "", fontSize: data.fontSize || "",
+          fontFamily: data.fontFamily || "",
+          vAlign: data.vAlign || (data.vCenter ? "middle" : "top") })];
+    blocks.forEach(b => layer.appendChild(makeBlock(entry, b)));
 
     bar.querySelector("input").addEventListener("input", queueRender);
+    /* clicking the empty part of the card puts the caret in the nearest box */
+    canvas.addEventListener("mousedown", e => {
+      if (e.target !== canvas && e.target !== layer) return;
+      const first = entry.querySelector(".entry-editor");
+      if (first){ e.preventDefault(); first.focus(); }
+    });
     bar.addEventListener("click", e => {
       const act = e.target && e.target.dataset && e.target.dataset.act;
       if (!act) return;
       if (act === "del"){
         deleted.push({ data: entryData(entry), at: allEntries().indexOf(entry) });
         undoBtn.disabled = false;
-        if (activeEditor === ed) activeEditor = null;
+        if (activeEditor && entry.contains(activeEditor)) activeEditor = null;
         entry.remove();
       }
       if (act === "dup"){
@@ -914,50 +950,209 @@
   /* The editable box mirrors the printed one: same inches, same inset, same
      quarter turn — so what fits on the card is what fits on the label. */
   function styleEditor(entry){
-    const ed  = entry.querySelector(".entry-editor");
     const rot = parseInt(entry.dataset.rot, 10) || 0;
     const turned  = rot === 90 || rot === 270;
-    /* while the caret is in it, the card turns upright so the text can be
-       read and typed the normal way round; it turns back on the way out */
-    const editing = document.activeElement === ed;
+    /* while the caret is in one of its boxes, the card turns upright so the
+       text can be read and typed the normal way round */
+    const editing = entry.contains(document.activeElement) &&
+                    document.activeElement.classList.contains("entry-editor");
 
-    /* the text box keeps the printed shape either way, so the line breaks
-       you see while typing are the ones that come out of the printer */
-    const boxW = turned ? sheet.size[1] : sheet.size[0];
-    const boxH = turned ? sheet.size[0] : sheet.size[1];
-    ed.style.width     = boxW + "in";
-    ed.style.minHeight = boxH + "in";
-    ed.style.padding   = turned
-      ? sheet.pad[1] + "in " + sheet.pad[0] + "in"
-      : sheet.pad[0] + "in " + sheet.pad[1] + "in";
-    ed.style.transform = "translate(-50%, -50%) rotate(" + (editing ? 0 : rot) + "deg)";
+    /* the label's own frame: the printed shape, or the printed shape on its
+       side, so the boxes and their line breaks match what comes out */
+    const layerW = turned ? sheet.size[1] : sheet.size[0];
+    const layerH = turned ? sheet.size[0] : sheet.size[1];
+    const layer  = entry.querySelector(".entry-rot");
+    layer.style.width  = layerW + "in";
+    layer.style.height = layerH + "in";
+    layer.style.transform = "translate(-50%, -50%) rotate(" + (editing ? 0 : rot) + "deg)";
 
-    /* only a quarter turn changes the card's shape; 180° just flips the text */
     const reshaped = editing && turned;
-    const cardW = reshaped ? boxW : sheet.size[0];
-    const cardH = reshaped ? boxH : sheet.size[1];
-    const canvas = ed.parentElement;
+    const cardW = reshaped ? layerW : sheet.size[0];
+    const cardH = reshaped ? layerH : sheet.size[1];
+    const canvas = entry.querySelector(".entry-canvas");
+    const zoom = Math.min(1, 5.4 / cardW, 4.4 / cardH);
     canvas.style.width  = cardW + "in";
     canvas.style.height = cardH + "in";
-    canvas.style.zoom   = Math.min(1, 5.4 / cardW, 4.4 / cardH).toFixed(3);
+    canvas.style.zoom   = zoom.toFixed(3);
+    /* the grips are sized in screen pixels, so undo the card's zoom on them */
+    canvas.style.setProperty("--cz", (1 / zoom).toFixed(3));
+
+    entry.querySelectorAll(".eblock").forEach(styleBlock);
 
     const note = entry.querySelector(".turn-note");
     if (note) note.textContent = !rot ? ""
       : editing ? "shown upright · prints turned " + rot + "°"
                 : "turned " + rot + "°";
-
-    const v = entry.dataset.valign || "top";
-    ed.classList.toggle("v-middle", v === "middle");
-    ed.classList.toggle("v-bottom", v === "bottom");
   }
 
+  /* ================= Text boxes ================= */
+  const MIN_BLOCK = 0.06;                       // as a fraction of the label
+
+  function defaultRect(){
+    const w = sheet.size[0], h = sheet.size[1];
+    return { x: sheet.pad[1]/w, y: sheet.pad[0]/h,
+             w: Math.max(MIN_BLOCK, 1 - 2*sheet.pad[1]/w),
+             h: Math.max(MIN_BLOCK, 1 - 2*sheet.pad[0]/h) };
+  }
+  const clamp01 = v => Math.min(1, Math.max(0, isFinite(v) ? v : 0));
+
+  function makeBlock(entry, b){
+    b = b || defaultRect();
+    const block = document.createElement("div");
+    block.className = "eblock";
+    block.dataset.x = clamp01(+b.x);
+    block.dataset.y = clamp01(+b.y);
+    block.dataset.w = Math.max(MIN_BLOCK, Math.min(1, +b.w || 1));
+    block.dataset.h = Math.max(MIN_BLOCK, Math.min(1, +b.h || 1));
+    block.dataset.valign = b.vAlign || "top";
+
+    const ed = document.createElement("div");
+    ed.className = "entry-editor";
+    ed.contentEditable = "true";
+    ed.spellcheck = false;
+    ed.innerHTML = sanitizeHTML(b.html || "");
+    if (b.fontSize)   ed.style.fontSize   = b.fontSize;
+    if (b.fontFamily) ed.style.fontFamily = b.fontFamily;
+
+    const grip = document.createElement("span");
+    grip.className = "grip"; grip.textContent = "⠿ drag";
+    grip.title = "Drag to move this text box";
+    const del = document.createElement("button");
+    del.className = "bdel"; del.textContent = "✕";
+    del.title = "Remove this text box";
+    const rsz = document.createElement("span");
+    rsz.className = "rsz"; rsz.title = "Drag to resize";
+
+    block.appendChild(ed);
+    block.appendChild(grip);
+    block.appendChild(del);
+    block.appendChild(rsz);
+
+    ed.addEventListener("focus", () => {
+      activeEditor = ed;
+      document.querySelectorAll(".entry").forEach(el =>
+        el.classList.toggle("focused", el === entry));
+      document.querySelectorAll(".eblock").forEach(el =>
+        el.classList.toggle("on", el === block));
+      syncVBtn();
+      syncRotBtn();
+      styleEditor(entry);
+    });
+    ed.addEventListener("blur", () => {
+      block.classList.remove("on");
+      styleEditor(entry);
+    });
+    ed.addEventListener("input", queueRender);
+    ed.addEventListener("paste", e => {
+      e.preventDefault();
+      const text = (e.clipboardData || window.clipboardData).getData("text/plain");
+      document.execCommand("insertText", false, text);
+    });
+
+    grip.addEventListener("pointerdown", e => startBlockDrag(e, block, "move"));
+    rsz.addEventListener("pointerdown",  e => startBlockDrag(e, block, "size"));
+    del.addEventListener("mousedown", e => e.preventDefault());
+    del.addEventListener("click", () => {
+      if (entry.querySelectorAll(".eblock").length < 2){
+        alert("A label needs at least one text box.");
+        return;
+      }
+      if (activeEditor === ed) activeEditor = null;
+      block.remove();
+      render();
+    });
+
+    styleBlock(block);
+    return block;
+  }
+
+  function styleBlock(block){
+    block.style.left   = (+block.dataset.x * 100) + "%";
+    block.style.top    = (+block.dataset.y * 100) + "%";
+    block.style.width  = (+block.dataset.w * 100) + "%";
+    block.style.height = (+block.dataset.h * 100) + "%";
+  }
+
+  function activeBlock(){
+    return activeEditor ? activeEditor.closest(".eblock") : null;
+  }
+
+  /* Dragging works in the label's own frame, so the box is laid flat first
+     (focusing it does that) and the card's zoom is divided back out. */
+  function startBlockDrag(e, block, mode){
+    e.preventDefault();
+    const entry  = block.closest(".entry");
+    const ed     = block.querySelector(".entry-editor");
+    if (document.activeElement !== ed) ed.focus();
+    entry.classList.add("dragging");
+    styleEditor(entry);
+
+    const canvas = entry.querySelector(".entry-canvas");
+    const layer  = entry.querySelector(".entry-rot");
+    const zoom   = parseFloat(canvas.style.zoom) || 1;
+    const W = layer.offsetWidth * zoom, H = layer.offsetHeight * zoom;
+    const inchW = layer.offsetWidth / 96, inchH = layer.offsetHeight / 96;
+    const sx = (1/32) / inchW, sy = (1/32) / inchH;     // snap to 1/32in
+    const snap = (v, step) => Math.round(v / step) * step;
+    const start = { mx:e.clientX, my:e.clientY,
+                    x:+block.dataset.x, y:+block.dataset.y,
+                    w:+block.dataset.w, h:+block.dataset.h };
+
+    const move = ev => {
+      const dx = (ev.clientX - start.mx) / W, dy = (ev.clientY - start.my) / H;
+      let x = start.x, y = start.y, w = start.w, h = start.h;
+      if (mode === "move"){
+        x = snap(start.x + dx, sx);
+        y = snap(start.y + dy, sy);
+        x = Math.min(Math.max(0, x), 1 - w);
+        y = Math.min(Math.max(0, y), 1 - h);
+      } else {
+        w = Math.max(MIN_BLOCK, Math.min(1 - x, snap(start.w + dx, sx)));
+        h = Math.max(MIN_BLOCK, Math.min(1 - y, snap(start.h + dy, sy)));
+      }
+      block.dataset.x = x; block.dataset.y = y;
+      block.dataset.w = w; block.dataset.h = h;
+      styleBlock(block);
+      queueRender();
+    };
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      entry.classList.remove("dragging");
+      render();
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  }
+
+  document.getElementById("addBlockBtn").addEventListener("mousedown", e => e.preventDefault());
+  document.getElementById("addBlockBtn").addEventListener("click", () => {
+    if (!ensureActive()) return;
+    const entry = activeEditor.closest(".entry");
+    const layer = entry.querySelector(".entry-rot");
+    const last  = activeBlock();
+    const off   = last ? Math.min(+last.dataset.y + +last.dataset.h + 0.02, 0.8) : 0.1;
+    const rect  = { x: last ? +last.dataset.x : 0.1, y: off, w: 0.5, h: 0.18 };
+    rect.w = Math.min(rect.w, 1 - rect.x);
+    rect.h = Math.min(rect.h, 1 - rect.y);
+    const block = makeBlock(entry, rect);
+    layer.appendChild(block);
+    render();
+    block.querySelector(".entry-editor").focus();
+  });
+
   function entryData(entry){
-    const ed = entry.querySelector(".entry-editor");
     return {
-      html: ed.innerHTML,
-      fontSize: ed.style.fontSize || "",
-      fontFamily: ed.style.fontFamily || "",
-      vAlign: entry.dataset.valign || "top",
+      blocks: Array.from(entry.querySelectorAll(".eblock")).map(bl => {
+        const ed = bl.querySelector(".entry-editor");
+        return {
+          x:+bl.dataset.x, y:+bl.dataset.y, w:+bl.dataset.w, h:+bl.dataset.h,
+          html: ed.innerHTML,
+          fontSize: ed.style.fontSize || "",
+          fontFamily: ed.style.fontFamily || "",
+          vAlign: bl.dataset.valign || "top"
+        };
+      }),
       textRotate: parseInt(entry.dataset.rot, 10) || 0,
       copies: parseInt(entry.querySelector(".copies-wrap input").value, 10) || 1
     };
@@ -1046,12 +1241,21 @@
     if (!ensureActive()) return;
     const pt = sizeSel.value + "pt";
     if (restoreSelection()){
+      /* styleWithCSS is on for the rest of the toolbar, but it makes
+         execCommand("fontSize") write a keyword like xxx-large and throw the
+         chosen point size away. Switch it off for this one command, then put
+         real points on whatever it marked. */
+      try { document.execCommand("styleWithCSS", false, false); } catch(e){}
       document.execCommand("fontSize", false, "7");
+      try { document.execCommand("styleWithCSS", false, true); } catch(e){}
       activeEditor.querySelectorAll('font[size="7"]').forEach(f => {
         const span = document.createElement("span");
         span.style.fontSize = pt;
         span.innerHTML = f.innerHTML;
         f.replaceWith(span);
+      });
+      activeEditor.querySelectorAll('[style*="xxx-large"]').forEach(el => {
+        el.style.fontSize = pt;
       });
     } else {
       activeEditor.style.fontSize = pt;
@@ -1075,16 +1279,16 @@
     btn.addEventListener("mousedown", e => e.preventDefault());
     btn.addEventListener("click", () => {
       if (!ensureActive()) return;
-      const entry = activeEditor.closest(".entry");
-      entry.dataset.valign = btn.dataset.valign;
-      styleEditor(entry);
+      const bl = activeBlock();
+      if (!bl) return;
+      bl.dataset.valign = btn.dataset.valign;
       syncVBtn();
       queueRender();
     });
   });
   function syncVBtn(){
-    const entry = activeEditor && activeEditor.closest(".entry");
-    const v = (entry && entry.dataset.valign) || "top";
+    const bl = activeBlock();
+    const v = (bl && bl.dataset.valign) || "top";
     vBtns.forEach(b => b.classList.toggle("is-on", b.dataset.valign === v));
   }
 
@@ -1406,23 +1610,24 @@
   }
 
   /* ---------- putting one on a label ---------- */
-  function textArea(entry){
-    const rot = parseInt(entry.dataset.rot, 10) || 0;
+  function textArea(block){
+    if (!block) return [sheet.size[0], sheet.size[1]];
+    const rot = parseInt(block.closest(".entry").dataset.rot, 10) || 0;
     const turned = rot === 90 || rot === 270;
-    const w = (turned ? sheet.size[1] : sheet.size[0]) - 2*(turned ? sheet.pad[0] : sheet.pad[1]);
-    const h = (turned ? sheet.size[0] : sheet.size[1]) - 2*(turned ? sheet.pad[1] : sheet.pad[0]);
-    return [Math.max(0.2, w), Math.max(0.2, h)];
+    const W = turned ? sheet.size[1] : sheet.size[0];
+    const H = turned ? sheet.size[0] : sheet.size[1];
+    return [Math.max(0.2, W * (+block.dataset.w)), Math.max(0.2, H * (+block.dataset.h))];
   }
   function insertBarcode(kind){
     if (!ensureActive()) return;
-    const entry = activeEditor.closest(".entry");
+    const block = activeBlock();
     const seed  = (window.getSelection() || {}).toString ? String(window.getSelection()).trim() : "";
     const value = prompt(kind === "qr" ? "What should the QR code say?" : "Barcode value (Code 128):", seed);
     if (value === null || !value.trim()) return;
     let svg;
     try { svg = barcodeSVG(kind, value); }
     catch(err){ alert(err.message || String(err)); return; }
-    const area = textArea(entry);
+    const area = textArea(block);
     let style;
     if (kind === "qr"){
       const side = Math.min(area[0]*0.5, area[1]*0.8);
@@ -1448,7 +1653,7 @@
   imageInput.addEventListener("change", () => {
     const file = imageInput.files && imageInput.files[0];
     if (!file || !activeEditor) return;
-    const entry = activeEditor.closest(".entry");
+    const block = activeBlock();
     const reader = new FileReader();
     reader.onload = () => {
       const img = new Image();
@@ -1463,7 +1668,7 @@
         ctx.drawImage(img, 0, 0, cv.width, cv.height);
         const png = /png/i.test(file.type);
         const src = cv.toDataURL(png ? "image/png" : "image/jpeg", 0.85);
-        const area = textArea(entry);
+        const area = textArea(block);
         const w = Math.min(area[0]*0.5, area[1]*0.6 * (cv.width/cv.height));
         activeEditor.focus();
         insertAtCursor('<img data-img="1" src="' + src + '" style="width:' + w.toFixed(2) + 'in">');
@@ -1631,8 +1836,7 @@
     if (!made.length){ importNote.textContent = "Nothing to import — paste some text first."; return; }
     const replace = document.getElementById("importReplace").checked;
     const existing = allEntries();
-    const onlyBlank = existing.length === 1 &&
-      !existing[0].querySelector(".entry-editor").innerText.trim();
+    const onlyBlank = existing.length === 1 && !existing[0].innerText.trim();
     if (replace || onlyBlank){
       entriesList.innerHTML = "";
       activeEditor = null;
@@ -1668,7 +1872,10 @@
     allEntries().forEach((entry, idx) => {
       const d = entryData(entry);
       for (let i = 0; i < d.copies; i++){
-        const copy = Object.assign({}, d, { html: numberTokens(d.html, i + 1, d.copies) });
+        const copy = Object.assign({}, d, {
+          blocks: d.blocks.map(b =>
+            Object.assign({}, b, { html: numberTokens(b.html, i + 1, d.copies) }))
+        });
         out.push({ d: copy, num: idx + 1 });
       }
     });
@@ -1732,12 +1939,11 @@
         lab.style.width  = sheet.size[0] + "in";
         lab.style.height = sheet.size[1] + "in";
         if (sheet.size[1] < 1.6) lab.classList.add("tiny");
-        if (item && item.d.vAlign && item.d.vAlign !== "top")
-          lab.classList.add("v-" + item.d.vAlign);
         lab.innerHTML =
           '<span class="slot-num">' +
             (testGrid ? "#" + (s+1) : item ? "Label " + item.num : "Empty") + '</span>' +
           '<span class="overflow-flag">Over the edge — shrink or trim</span>' +
+          '<span class="shrunk-flag"></span>' +
           '<span class="cut"></span>';
         const rot = item ? (item.d.textRotate || 0) : 0;
         const turned = rot === 90 || rot === 270;
@@ -1747,18 +1953,21 @@
         box.style.height    = (turned ? sheet.size[0] : sheet.size[1]) + "in";
         box.style.transform = "translate(-50%, -50%) rotate(" + rot + "deg)";
 
-        const content = document.createElement("div");
-        content.className = "pcontent";
-        content.style.margin = turned
-          ? sheet.pad[1] + "in " + sheet.pad[0] + "in"
-          : sheet.pad[0] + "in " + sheet.pad[1] + "in";
-        content.style.fontSize = sheet.font + "pt";
-        if (item){
-          content.innerHTML = item.d.html;
-          if (item.d.fontSize)   content.style.fontSize   = item.d.fontSize;
-          if (item.d.fontFamily) content.style.fontFamily = item.d.fontFamily;
-        }
-        box.appendChild(content);
+        if (item) (item.d.blocks || []).forEach(bl => {
+          const pb = document.createElement("div");
+          pb.className = "pblock" + (bl.vAlign && bl.vAlign !== "top" ? " v-" + bl.vAlign : "");
+          pb.style.left   = (bl.x * 100) + "%";
+          pb.style.top    = (bl.y * 100) + "%";
+          pb.style.width  = (bl.w * 100) + "%";
+          pb.style.height = (bl.h * 100) + "%";
+          const content = document.createElement("div");
+          content.className = "pcontent";
+          content.style.fontSize = bl.fontSize || (sheet.font + "pt");
+          if (bl.fontFamily) content.style.fontFamily = bl.fontFamily;
+          content.innerHTML = bl.html;
+          pb.appendChild(content);
+          box.appendChild(pb);
+        });
         lab.appendChild(box);
         page.appendChild(lab);
       }
@@ -1789,16 +1998,26 @@
 
   function fitAll(){
     document.querySelectorAll(".plabel").forEach(lab => {
-      const c = lab.querySelector(".pcontent");
-      c.style.zoom = "";
-      const over = c.scrollHeight > c.clientHeight + 1;
-      if (over && fitToggle.checked){
-        let z = c.clientHeight / c.scrollHeight;
-        z = Math.max(z * 0.985, 0.25);
-        c.style.zoom = z.toFixed(3);
+      let over = false, tightest = 1;
+      lab.querySelectorAll(".pcontent").forEach(c => {
+        c.style.zoom = "";
+        if (c.scrollHeight > c.clientHeight + 1 && fitToggle.checked){
+          let z = c.clientHeight / c.scrollHeight;
+          z = Math.max(z * 0.985, 0.25);
+          c.style.zoom = z.toFixed(3);
+          tightest = Math.min(tightest, z);
+        }
+        if (c.scrollHeight > c.clientHeight + 1) over = true;
+      });
+      lab.classList.toggle("overflowing", over && !fitToggle.checked);
+      /* say so when the text is only fitting because it was shrunk —
+         otherwise picking a bigger point size looks like it did nothing */
+      const flag = lab.querySelector(".shrunk-flag");
+      if (flag){
+        const show = fitToggle.checked && tightest < 0.995;
+        flag.textContent = show ? "shrunk to " + Math.round(tightest * 100) + "%" : "";
+        flag.style.display = show ? "" : "none";
       }
-      const stillOver = c.scrollHeight > c.clientHeight + 1;
-      lab.classList.toggle("overflowing", stillOver && !fitToggle.checked);
     });
   }
   fitToggle.addEventListener("change", fitAll);

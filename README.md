@@ -63,6 +63,12 @@ sheet stores the *value*, and the picture is always redrawn from it.
 **🖼 Image** drops in a logo or photo. Big pictures are scaled down so saved
 sheets stay small; PNGs keep their transparency.
 
+**＋ Text box** adds another box of text to the label. Each box can be dragged
+by its grip and resized from its corner, and holds its own font, size and
+alignment — so a return address, a big destination and a barcode can each sit
+where you want them. Boxes are stored as a share of the label, so switching
+label type keeps the layout in proportion.
+
 **Insert…** has the usual shipping marks (FRAGILE, THIS SIDE UP and so on), and
 **＋ Block** keeps the current label's text as a named block — a return address,
 say — to reuse on any later label.
@@ -72,6 +78,10 @@ it a quarter turn at a time. While you are typing in a turned label the card
 swings upright so you can read what you are writing — the line breaks stay
 exactly as they will print — and it turns back as soon as you click away. The
 note in the label's bar tells you which way it will come out of the printer.
+
+**Shrink to fit** scales text down when it would run past the edge of its box,
+and says so ("shrunk to 60%") on the label — so a point size that appears to do
+nothing is explained rather than mysterious.
 
 Work is **saved as you go** and comes back when you reopen the page. **💾 Save**
 writes a file you can keep or send on; **🗑 New** starts a clean sheet; **↩ Undo**
