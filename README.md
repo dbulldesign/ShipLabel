@@ -79,9 +79,15 @@ swings upright so you can read what you are writing — the line breaks stay
 exactly as they will print — and it turns back as soon as you click away. The
 note in the label's bar tells you which way it will come out of the printer.
 
-**Shrink to fit** scales text down when it would run past the edge of its box,
-and says so ("shrunk to 60%") on the label — so a point size that appears to do
-nothing is explained rather than mysterious.
+**Text** sets what happens when the text doesn't match its box: *Shrink to fit*
+scales it down when it would run over (and says "shrunk to 60%" on the label,
+so a point size that appears to do nothing is explained), *Fill the box* scales
+it up or down so it uses the whole box — the usual choice for a Dymo label —
+and *Leave as typed* prints exactly the point size you picked.
+
+**Right-click** a text box for its alignment, barcode, QR, picture, and the
+label's rotate/duplicate/delete. Right-click anywhere else for the text fit,
+orientation, printer alignment and print.
 
 Work is **saved as you go** and comes back when you reopen the page. **💾 Save**
 writes a file you can keep or send on; **🗑 New** starts a clean sheet; **↩ Undo**
@@ -95,6 +101,13 @@ printer — pick it under 🖨 Print. Choose the matching **Dymo Small** or **Dy
 Large** label type first so the page is exactly one label, and set the same
 label size in the Dymo driver. If a label comes out turned the wrong way,
 **▭ Landscape** flips it.
+
+**If it prints tiny, the paper sizes don't match.** The browser only prints at
+the label's real size when the driver is set to that same size; otherwise it
+drops the little page onto whatever paper is selected and the label ends up a
+fraction of the sheet. Set the driver's paper to the label size and the print
+dialog's scale to 100% (not "Fit to page"). The app shows a reminder of the
+exact size to pick whenever a one-per-page label type is chosen.
 
 ## Printing
 

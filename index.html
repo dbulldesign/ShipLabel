@@ -92,6 +92,30 @@
   .toggle input:checked + .pill::after{left:17px;}
   .toggle small{color:var(--ink-dim); font-size:12px;}
 
+  /* ================= Right-click menu ================= */
+  .ctxmenu{
+    position:fixed; z-index:200; min-width:210px;
+    background:var(--panel); border:1px solid var(--panel-edge);
+    border-radius:10px; padding:5px;
+    box-shadow:0 16px 40px rgba(0,0,0,.55);
+    font-size:13px; user-select:none;
+  }
+  .ctxmenu[hidden]{display:none;}
+  .ctxmenu button{
+    display:flex; align-items:center; gap:8px; width:100%;
+    text-align:left; padding:7px 10px; border-radius:6px;
+    color:var(--ink); background:transparent; border:none; font:inherit;
+  }
+  .ctxmenu button:hover{background:rgba(255,255,255,.09);}
+  .ctxmenu button[disabled]{opacity:.35;}
+  .ctxmenu button[disabled]:hover{background:transparent;}
+  .ctxmenu .sep{height:1px; background:var(--panel-edge); margin:5px 4px;}
+  .ctxmenu .head{
+    padding:6px 10px 4px; font-size:11px; letter-spacing:.12em;
+    text-transform:uppercase; color:var(--ink-dim); font-weight:700;
+  }
+  .ctxmenu .tick{width:12px; color:var(--accent);}
+
   /* ================= Layout ================= */
   .app{
     display:flex; gap:0; align-items:stretch;
@@ -311,6 +335,11 @@
   }
   .custombar .apply-btn:hover{filter:brightness(1.08); background:var(--accent);}
   .cb-note{font-size:12px; color:var(--warn);}
+  .printhint{
+    flex:1 0 100%; font-size:12px; color:var(--warn);
+    padding:2px 2px 0;
+  }
+  .printhint:empty{display:none;}
   .custombar .cb-check{gap:6px;}
   #importText{
     flex:1 0 100%; min-height:104px; resize:vertical;
@@ -462,11 +491,14 @@
     <input type="file" id="openInput" accept=".json,application/json" style="display:none">
   </div>
 
-  <label class="toggle" title="Automatically shrink text so it never runs past the label edge">
-    <input type="checkbox" id="fitToggle" checked>
-    <span class="pill" aria-hidden="true"></span>
-    <small>Shrink to fit</small>
-  </label>
+  <div class="group" aria-label="Text fit">
+    <label class="field-label" for="fitMode">Text</label>
+    <select id="fitMode" title="What to do when the text does not match the size of its box">
+      <option value="shrink" selected>Shrink to fit</option>
+      <option value="fill">Fill the box</option>
+      <option value="off">Leave as typed</option>
+    </select>
+  </div>
  </div>
 
   <div class="custombar" id="customBar" hidden>
@@ -486,6 +518,8 @@
     <button class="apply-btn" id="applyCustom">Apply</button>
     <span class="cb-note" id="customNote"></span>
   </div>
+
+  <div class="printhint" id="printHint"></div>
 
   <div class="custombar" id="importBar" hidden>
     <span class="cb-title">Make labels from a list</span>
@@ -512,6 +546,8 @@
     <span class="cb-note" id="nudgeNote">Remembered per label type. Negative numbers shift the other way.</span>
   </div>
 </header>
+
+<div class="ctxmenu" id="ctxMenu" hidden></div>
 
 <main class="app">
   <section class="entries-panel">
@@ -541,7 +577,13 @@
   const entriesList = document.getElementById("entriesList");
   const pagesEl     = document.getElementById("pages");
   const previewPanel= document.getElementById("previewPanel");
-  const fitToggle   = document.getElementById("fitToggle");
+  const fitMode     = document.getElementById("fitMode");
+  const printHint   = document.getElementById("printHint");
+  const FIT_KEY     = "shiplabel.fit";
+  try {
+    const m = localStorage.getItem(FIT_KEY);
+    if (m === "fill" || m === "off" || m === "shrink") fitMode.value = m;
+  } catch(e){}
   const entryCount  = document.getElementById("entryCount");
   const pageCount   = document.getElementById("pageCount");
   let activeEditor  = null;
@@ -715,6 +757,11 @@
     const sideways = orientation === "landscape";
     stockSel.value = stock.id;
     stockNote.textContent = stock.note + (sideways ? " · turned sideways" : "");
+    /* a roll printer only prints at the right size if its paper matches */
+    printHint.textContent = perPage() === 1
+      ? "Set the printer's paper to " + sheet.page[0] + " × " + sheet.page[1] +
+        "″ and scale to 100% — otherwise it prints small on a bigger sheet."
+      : "";
     customBar.hidden = stock.id !== "custom";
     portraitBtn.classList.toggle("is-on", !sideways);
     landscapeBtn.classList.toggle("is-on", sideways);
@@ -1765,6 +1812,106 @@
   });
   buildPresets();
 
+  /* ================= Right-click menu =================
+     The browser's own menu is only useful for cut and paste; this one puts
+     the label settings where the pointer already is. */
+  const ctxMenu = document.getElementById("ctxMenu");
+
+  function closeCtx(){ ctxMenu.hidden = true; ctxMenu.innerHTML = ""; }
+  document.addEventListener("click", e => {
+    if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) closeCtx();
+  });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeCtx(); });
+  window.addEventListener("resize", closeCtx);
+  document.querySelector(".preview-panel").addEventListener("scroll", closeCtx);
+
+  function ctxItem(label, fn, opts){
+    opts = opts || {};
+    const b = document.createElement("button");
+    b.innerHTML = '<span class="tick">' + (opts.on ? "✓" : "") + "</span>" +
+                  "<span>" + label + "</span>";
+    if (opts.disabled) b.disabled = true;
+    else b.addEventListener("click", () => { closeCtx(); fn(); });
+    ctxMenu.appendChild(b);
+    return b;
+  }
+  function ctxHead(t){
+    const h = document.createElement("div");
+    h.className = "head"; h.textContent = t;
+    ctxMenu.appendChild(h);
+  }
+  function ctxSep(){
+    const d = document.createElement("div");
+    d.className = "sep";
+    ctxMenu.appendChild(d);
+  }
+  function openCtx(x, y){
+    ctxMenu.hidden = false;
+    ctxMenu.style.left = "0px"; ctxMenu.style.top = "0px";
+    const r = ctxMenu.getBoundingClientRect();
+    ctxMenu.style.left = Math.min(x, window.innerWidth  - r.width  - 8) + "px";
+    ctxMenu.style.top  = Math.min(y, window.innerHeight - r.height - 8) + "px";
+  }
+
+  /* on a text box: everything you'd want to change about that box */
+  function blockMenu(block, e){
+    const entry = block.closest(".entry");
+    const ed = block.querySelector(".entry-editor");
+    ed.focus();
+    ctxMenu.innerHTML = "";
+    ctxHead("This text box");
+    [["Top","top"],["Middle","middle"],["Bottom","bottom"]].forEach(([name, v]) => {
+      ctxItem(name, () => {
+        block.dataset.valign = v; syncVBtn(); queueRender();
+      }, { on: (block.dataset.valign || "top") === v });
+    });
+    ctxSep();
+    ctxItem("Barcode…", () => insertBarcode("128"));
+    ctxItem("QR code…", () => insertBarcode("qr"));
+    ctxItem("Picture…",  () => { imageInput.value = ""; imageInput.click(); });
+    ctxSep();
+    ctxItem("Add another text box", () => document.getElementById("addBlockBtn").click());
+    ctxItem("Remove this text box", () => block.querySelector(".bdel").click(),
+            { disabled: entry.querySelectorAll(".eblock").length < 2 });
+    ctxSep();
+    ctxHead("This label");
+    const rot = parseInt(entry.dataset.rot, 10) || 0;
+    ctxItem("Turn text a quarter turn (now " + rot + "°)",
+            () => document.getElementById("rotTextBtn").click());
+    ctxItem("Duplicate label", () => entry.querySelector('[data-act="dup"]').click());
+    ctxItem("Delete label",    () => entry.querySelector('[data-act="del"]').click());
+    openCtx(e.clientX, e.clientY);
+  }
+
+  /* on the sheet: the settings that belong to the whole run */
+  function sheetMenu(e){
+    ctxMenu.innerHTML = "";
+    ctxHead("Text fit");
+    [["Shrink to fit","shrink"],["Fill the box","fill"],["Leave as typed","off"]].forEach(([n,v]) => {
+      ctxItem(n, () => { fitMode.value = v; saveFitMode(); fitAll(); },
+              { on: fitMode.value === v });
+    });
+    ctxSep();
+    ctxHead("Sheet");
+    ctxItem("Portrait",  () => setOrientation("portrait"),  { on: orientation !== "landscape" });
+    ctxItem("Landscape", () => setOrientation("landscape"), { on: orientation === "landscape" });
+    ctxSep();
+    ctxItem("Printer alignment…", () => {
+      nudgeBar.hidden = false;
+      nudgeBtn.classList.add("is-on");
+      nudgeBar.scrollIntoView({ block:"nearest" });
+    });
+    ctxItem("Print this sheet", () => printPages(null));
+    openCtx(e.clientX, e.clientY);
+  }
+
+  document.addEventListener("contextmenu", e => {
+    const block = e.target.closest && e.target.closest(".eblock");
+    if (block){ e.preventDefault(); blockMenu(block, e); return; }
+    const sheet_ = e.target.closest && e.target.closest(".preview-panel, .entries-panel");
+    if (sheet_){ e.preventDefault(); sheetMenu(e); }
+  });
+
   /* ================= Bulk import ================= */
   const importBar  = document.getElementById("importBar");
   const importText = document.getElementById("importText");
@@ -1953,7 +2100,7 @@
         box.style.height    = (turned ? sheet.size[0] : sheet.size[1]) + "in";
         box.style.transform = "translate(-50%, -50%) rotate(" + rot + "deg)";
 
-        if (item) (item.d.blocks || []).forEach(bl => {
+        if (item) (item.d.blocks || []).forEach((bl, bi) => {
           const pb = document.createElement("div");
           pb.className = "pblock" + (bl.vAlign && bl.vAlign !== "top" ? " v-" + bl.vAlign : "");
           pb.style.left   = (bl.x * 100) + "%";
@@ -1962,6 +2109,8 @@
           pb.style.height = (bl.h * 100) + "%";
           const content = document.createElement("div");
           content.className = "pcontent";
+          content.dataset.fitkey = bi + ":" + hashText(bl.html) + ":" +
+            Math.round(bl.w*1000) + "x" + Math.round(bl.h*1000) + ":" + (bl.fontSize || "");
           content.style.fontSize = bl.fontSize || (sheet.font + "pt");
           if (bl.fontFamily) content.style.fontFamily = bl.fontFamily;
           content.innerHTML = bl.html;
@@ -1996,31 +2145,61 @@
   }
   window.addEventListener("resize", scalePages);
 
+  function hashText(t){
+    let h = 0;
+    for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0;
+    return h;
+  }
+
+  /* Find the scale at which the text just fits its box. Zoom changes how the
+     text wraps, so the answer can't be worked out with one division — a few
+     halvings get there, and identical copies reuse the first answer. */
+  function fitScale(c, allowGrow){
+    const fits = () => c.scrollHeight <= c.clientHeight + 1 &&
+                       c.scrollWidth  <= c.clientWidth  + 1;
+    let lo = 0.25, hi = allowGrow ? 8 : 1;
+    c.style.zoom = hi.toFixed(3);
+    if (fits()) return hi;
+    for (let i = 0; i < 9; i++){
+      const mid = (lo + hi) / 2;
+      c.style.zoom = mid.toFixed(3);
+      if (fits()) lo = mid; else hi = mid;
+    }
+    return lo;
+  }
+
   function fitAll(){
+    const mode = fitMode.value;
+    const cache = {};
     document.querySelectorAll(".plabel").forEach(lab => {
       let over = false, tightest = 1;
       lab.querySelectorAll(".pcontent").forEach(c => {
         c.style.zoom = "";
-        if (c.scrollHeight > c.clientHeight + 1 && fitToggle.checked){
-          let z = c.clientHeight / c.scrollHeight;
-          z = Math.max(z * 0.985, 0.25);
+        if (mode !== "off"){
+          const key = c.dataset.fitkey;
+          let z = key && cache[key] !== undefined ? cache[key]
+                                                  : fitScale(c, mode === "fill");
+          if (key) cache[key] = z;
           c.style.zoom = z.toFixed(3);
           tightest = Math.min(tightest, z);
         }
         if (c.scrollHeight > c.clientHeight + 1) over = true;
       });
-      lab.classList.toggle("overflowing", over && !fitToggle.checked);
+      lab.classList.toggle("overflowing", over && mode === "off");
       /* say so when the text is only fitting because it was shrunk —
          otherwise picking a bigger point size looks like it did nothing */
       const flag = lab.querySelector(".shrunk-flag");
       if (flag){
-        const show = fitToggle.checked && tightest < 0.995;
+        const show = mode !== "off" && tightest < 0.995;
         flag.textContent = show ? "shrunk to " + Math.round(tightest * 100) + "%" : "";
         flag.style.display = show ? "" : "none";
       }
     });
   }
-  fitToggle.addEventListener("change", fitAll);
+  fitMode.addEventListener("change", () => { saveFitMode(); fitAll(); });
+  function saveFitMode(){
+    try { localStorage.setItem(FIT_KEY, fitMode.value); } catch(e){}
+  }
 
   /* ================= Expand preview ================= */
   const expandBtn = document.getElementById("expandBtn");
