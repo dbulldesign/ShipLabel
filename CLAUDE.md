@@ -13,6 +13,11 @@ PDF" covers the same job offline.)
 - **Always merge finished work to `main` and push it.** Develop on the working
   branch, then fast-forward `main` so the change can be seen and published.
   Don't wait to be asked.
+- **Bump `APP_VERSION` in `index.html` with every change you publish.** A
+  running copy fetches the published file and compares that constant to decide
+  whether to offer an update, so a change shipped without a bump never reaches
+  anyone who already has the page open. Patch digit for fixes, middle for new
+  features.
 - Verify changes in a real browser before reporting them as working. Chromium
   is at `/opt/pw-browsers/chromium-1194/chrome-linux/chrome` and Playwright is
   the usual way to drive it.

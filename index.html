@@ -39,6 +39,27 @@
     display:flex; flex-direction:column; gap:8px;
   }
   .bar{display:flex; flex-wrap:wrap; gap:10px; align-items:center;}
+  .appver{
+    font-size:11px; color:var(--ink-dim); letter-spacing:.04em;
+    align-self:flex-start; margin:2px 4px 0 -4px;
+  }
+  .updatebar{
+    flex:1 0 100%;
+    display:flex; flex-wrap:wrap; align-items:center; gap:10px;
+    background:var(--accent); color:var(--accent-ink);
+    border-radius:var(--radius); padding:8px 12px; font-weight:600;
+  }
+  .updatebar[hidden]{display:none;}
+  .updatebar .grow{flex:1; min-width:180px;}
+  .updatebar .unsaved{
+    background:rgba(0,0,0,.22); border-radius:6px;
+    padding:3px 8px; font-size:12px; font-weight:700;
+  }
+  .updatebar button{
+    background:rgba(0,0,0,.2); color:var(--accent-ink);
+    border-radius:7px; padding:6px 12px; font-weight:800;
+  }
+  .updatebar button:hover{background:rgba(0,0,0,.33);}
   #startSlot{
     width:56px; background:var(--desk); color:var(--ink);
     border:1px solid var(--panel-edge); border-radius:6px;
@@ -403,11 +424,13 @@
 <body>
 
 <header class="topbar">
+ <div class="updatebar" id="updateBar" hidden></div>
  <div class="bar">
   <div class="brand">
     <b>Label Sheets</b>
     <span id="stockNote">S-5049G · two 8½ × 5½″ labels per page</span>
   </div>
+  <span class="appver" id="appVer" title="Which version of this app you are running"></span>
 
   <div class="group" aria-label="Label type">
     <label class="field-label" for="stockSel">Label</label>
@@ -594,6 +617,12 @@
   const pageCount   = document.getElementById("pageCount");
   let activeEditor  = null;
   let savedRange    = null;
+
+  /* ================= Version =================
+     Bump APP_VERSION whenever index.html changes — a running copy compares
+     itself against the published one to spot that there is a newer build. */
+  const APP_VERSION = "1.0.0";
+  document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
   try { document.execCommand("styleWithCSS", false, true); } catch(e){}
   try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch(e){}
@@ -877,6 +906,7 @@
     startSlotInput.value = 1;
     try { localStorage.removeItem(AUTOSAVE_KEY); } catch(e){}
     render();
+    markSaved();
   });
 
   /* ---------- custom size ---------- */
@@ -1852,6 +1882,107 @@
   });
   buildPresets();
 
+  /* ================= Update check =================
+     The app is one file, so the published copy of that file is its own
+     manifest: fetch it, read the version out of it, compare. Nothing extra
+     is served, and a copy opened from disk simply skips the check. */
+  const updateBar  = document.getElementById("updateBar");
+  const SNOOZE_KEY = "shiplabel.snoozed";
+  const CHECK_KEY  = "shiplabel.lastcheck";
+  let newVersion = "";
+
+  function cmpVersion(a, b){
+    const pa = String(a).split("."), pb = String(b).split(".");
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++){
+      const x = parseInt(pa[i] || "0", 10) || 0, y = parseInt(pb[i] || "0", 10) || 0;
+      if (x !== y) return x > y ? 1 : -1;
+    }
+    return 0;
+  }
+
+  /* what counts as "not saved yet": anything changed since the last time the
+     sheet was written to a file, opened from one, or started fresh */
+  let savedMark = "";
+  function fingerprint(){
+    const d = sheetData();
+    delete d.savedAt;
+    try { return JSON.stringify(d); } catch(e){ return ""; }
+  }
+  function markSaved(){ savedMark = fingerprint(); drawUpdateBar(); }
+  function hasUnsaved(){ return savedMark !== "" && fingerprint() !== savedMark; }
+
+  function drawUpdateBar(){
+    if (!newVersion){ updateBar.hidden = true; return; }
+    const dirty = hasUnsaved();
+    updateBar.hidden = false;
+    updateBar.innerHTML = "";
+    const msg = document.createElement("span");
+    msg.className = "grow";
+    msg.textContent = "Version " + newVersion + " is available — you have " + APP_VERSION + ".";
+    updateBar.appendChild(msg);
+    if (dirty){
+      const warn = document.createElement("span");
+      warn.className = "unsaved";
+      warn.textContent = "You have unsaved label changes";
+      updateBar.appendChild(warn);
+      const save = document.createElement("button");
+      save.textContent = "💾 Save labels first";
+      save.addEventListener("click", () => document.getElementById("saveBtn").click());
+      updateBar.appendChild(save);
+    }
+    const go = document.createElement("button");
+    go.textContent = dirty ? "Update anyway" : "⟳ Update now";
+    go.addEventListener("click", () => {
+      if (hasUnsaved() &&
+          !confirm("Your labels have changes that aren't saved to a file.\n\n" +
+                   "They are kept in this browser and should come back after the update, " +
+                   "but a saved file is safer.\n\nUpdate without saving?")) return;
+      const base = location.href.split("#")[0].split("?")[0];
+      location.replace(base + "?v=" + encodeURIComponent(newVersion));
+    });
+    updateBar.appendChild(go);
+    const later = document.createElement("button");
+    later.textContent = "Later";
+    later.addEventListener("click", () => {
+      try {
+        localStorage.setItem(SNOOZE_KEY, JSON.stringify({ v:newVersion, until:Date.now() + 864e5 }));
+      } catch(e){}
+      newVersion = "";
+      updateBar.hidden = true;
+    });
+    updateBar.appendChild(later);
+  }
+
+  function snoozed(v){
+    try {
+      const s = JSON.parse(localStorage.getItem(SNOOZE_KEY) || "null");
+      return !!(s && s.v === v && s.until > Date.now());
+    } catch(e){ return false; }
+  }
+
+  function checkForUpdate(){
+    if (!/^https?:$/.test(location.protocol)) return;   // opened from disk: nothing to fetch
+    try { localStorage.setItem(CHECK_KEY, String(Date.now())); } catch(e){}
+    fetch(location.href.split("#")[0], { cache:"no-store" })
+      .then(r => r.ok ? r.text() : null)
+      .then(text => {
+        if (!text) return;
+        const m = text.match(/APP_VERSION\s*=\s*"([0-9][0-9.]*)"/);
+        if (!m) return;
+        if (cmpVersion(m[1], APP_VERSION) > 0 && !snoozed(m[1])){
+          newVersion = m[1];
+          drawUpdateBar();
+        }
+      })
+      .catch(() => {});                                  // offline: just carry on
+  }
+  setTimeout(checkForUpdate, 1200);
+  window.addEventListener("focus", () => {
+    let last = 0;
+    try { last = parseInt(localStorage.getItem(CHECK_KEY), 10) || 0; } catch(e){}
+    if (Date.now() - last > 6 * 3600e3) checkForUpdate();
+  });
+
   /* ================= Right-click menu =================
      The browser's own menu is only useful for cut and paste; this one puts
      the label settings where the pointer already is. */
@@ -2183,6 +2314,7 @@
     scalePages();
     fitAll();
     autosave();
+    if (newVersion) drawUpdateBar();
   }
 
   function scalePages(){
@@ -2268,6 +2400,7 @@
     const data = {
       app: "shiplabel-sheet",
       version: 3,
+      appVersion: APP_VERSION,
       savedAt: new Date().toISOString(),
       stock: stock.id,
       orientation: orientation,
@@ -2300,6 +2433,7 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    markSaved();
   });
 
   const openInput = document.getElementById("openInput");
@@ -2340,6 +2474,7 @@
     applyStock(findStock(data.stock) ? data.stock : "s5049g", { silent:true });
     startSlotInput.value = Math.max(1, parseInt(data.startSlot, 10) || 1);
     queueRender();
+    markSaved();
   }
 
   /* ================= Sanitize loaded HTML ================= */
@@ -2574,6 +2709,7 @@
   applyStock(findStock(startId) ? startId : "s5049g", { silent:true });
   if (!restoreAutosave()) entriesList.appendChild(makeEntry());
   render();
+  markSaved();          // whatever we opened with is the starting point
   window.addEventListener("load", () => { scalePages(); fitAll(); });
 })();
 </script>

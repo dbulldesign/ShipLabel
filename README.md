@@ -126,6 +126,18 @@ fraction of the sheet. Set the driver's paper to the label size and the print
 dialog's scale to 100% (not "Fit to page"). The app shows a reminder of the
 exact size to pick whenever a one-per-page label type is chosen.
 
+## Updates
+
+The version is shown next to the title. When the app is opened from a web
+address (rather than a file on disk) it quietly checks whether the published
+copy is newer and, if it is, shows a bar offering to update. If the labels on
+screen have changes that haven't been written to a file, the bar says so and
+offers to save them first — and asks again if you choose to update anyway.
+Choosing *Later* keeps that version quiet for a day.
+
+Work is kept in the browser across an update, so nothing is lost either way; a
+saved file is just the safer copy.
+
 ## Printing
 
 **Start at** lets you finish a part-used sheet: set it to the first label still
