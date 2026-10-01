@@ -179,6 +179,12 @@
     border:1px solid var(--panel-edge); border-radius:6px;
     padding:4px 6px; font:inherit; text-align:center;
   }
+  .numwrap{display:flex; align-items:center; gap:4px; margin-left:10px; color:var(--ink-dim);}
+  .numwrap input{
+    width:58px; background:var(--desk); color:var(--ink);
+    border:1px solid var(--panel-edge); border-radius:6px;
+    padding:4px 6px; font:inherit; text-align:center;
+  }
   .turn-note{color:var(--accent); font-size:11px; letter-spacing:.03em; margin-left:10px;}
   .entry-bar .tools{margin-left:auto; display:flex; gap:2px;}
   .entry-bar .tools button{padding:5px 8px; font-size:13px;}
@@ -931,6 +937,11 @@
   /* ================= Entries ================= */
   function makeEntry(data){
     data = data || {};
+    const copies0 = parseInt(data.copies,10) >= 1 ? Math.min(parseInt(data.copies,10),999) : 1;
+    const numFrom = (function(){
+      const v = parseInt(data.numFrom, 10);
+      return isFinite(v) ? v : 1;
+    })();
     const entry = document.createElement("div");
     entry.className = "entry";
     /* vCenter is what the older files called it */
@@ -941,9 +952,13 @@
     bar.className = "entry-bar";
     bar.innerHTML =
       '<span class="entry-num"></span>' +
-      '<span class="copies-wrap">× <input type="number" min="1" max="99" value="' +
-        (parseInt(data.copies,10) >= 1 ? Math.min(parseInt(data.copies,10),99) : 1) +
-      '" title="How many copies of this label to print. Use {n} and {of} in the text to number them, e.g. BOX {n} OF {of}"> copies</span>' +
+      '<span class="copies-wrap">× <input class="qty" type="number" min="1" max="999" value="' +
+        (parseInt(data.copies,10) >= 1 ? Math.min(parseInt(data.copies,10),999) : 1) +
+      '" title="How many labels to print"> copies</span>' +
+      '<span class="numwrap" title="Numbers the run. Put {n} in the text where the number goes — {nnn} pads it to 001. {of} is how many, {from} and {to} are the ends, {page} and {pages} the sheet.">' +
+        '№ <input class="numfrom" type="number" value="' + numFrom + '" title="First number"> → ' +
+        '<input class="numto" type="number" value="' + (numFrom + copies0 - 1) + '" title="Last number — changing it changes how many labels print">' +
+      '</span>' +
       '<span class="turn-note"></span>' +
       '<span class="tools">' +
         '<button data-act="up" title="Move up">↑</button>' +
@@ -970,7 +985,21 @@
           vAlign: data.vAlign || (data.vCenter ? "middle" : "top") })];
     blocks.forEach(b => layer.appendChild(makeBlock(entry, b)));
 
-    bar.querySelector("input").addEventListener("input", queueRender);
+    /* The three fields describe one run, so editing any of them moves the
+       other that has to follow: a new last number changes how many labels
+       print, a new first number slides the whole run along. */
+    const qtyIn  = bar.querySelector(".qty");
+    const fromIn = bar.querySelector(".numfrom");
+    const toIn   = bar.querySelector(".numto");
+    const asInt = (el, dflt) => { const v = parseInt(el.value, 10); return isFinite(v) ? v : dflt; };
+    const qtyOf = () => Math.min(999, Math.max(1, asInt(qtyIn, 1)));
+    function syncEnd(){ toIn.value = asInt(fromIn, 1) + qtyOf() - 1; }
+    qtyIn.addEventListener("input",  () => { syncEnd(); queueRender(); });
+    fromIn.addEventListener("input", () => { syncEnd(); queueRender(); });
+    toIn.addEventListener("input", () => {
+      qtyIn.value = Math.min(999, Math.max(1, asInt(toIn, 1) - asInt(fromIn, 1) + 1));
+      queueRender();
+    });
     /* clicking the empty part of the card puts the caret in the nearest box */
     canvas.addEventListener("mousedown", e => {
       if (e.target !== canvas && e.target !== layer) return;
@@ -1206,7 +1235,11 @@
         };
       }),
       textRotate: parseInt(entry.dataset.rot, 10) || 0,
-      copies: parseInt(entry.querySelector(".copies-wrap input").value, 10) || 1
+      copies: Math.min(999, Math.max(1, parseInt(entry.querySelector(".qty").value, 10) || 1)),
+      numFrom: (function(){
+        const v = parseInt(entry.querySelector(".numfrom").value, 10);
+        return isFinite(v) ? v : 1;
+      })()
     };
   }
   function allEntries(){ return Array.from(entriesList.querySelectorAll(".entry")); }
@@ -1738,7 +1771,9 @@
     ["HANDLE WITH CARE",       "HANDLE WITH CARE"],
     ["DO NOT STACK",           "DO NOT STACK"],
     ["KEEP DRY",               "KEEP DRY"],
-    ["BOX {n} OF {of}",        "BOX {n} OF {of}"]
+    ["BOX {n} OF {to}",        "BOX {n} OF {to}"],
+    ["No. {nnn}",              "No. {nnn}"],
+    ["Sheet {page} of {pages}","Sheet {page} of {pages}"]
   ];
   const BLOCKS_KEY = "shiplabel.blocks";
   const presetSel  = document.getElementById("presetSel");
@@ -2006,16 +2041,28 @@
     renderTimer = setTimeout(render, 90);
   }
 
-  /* {n} and {of} are filled in per copy, so one entry set to 12 copies
-     prints BOX 1 OF 12 … BOX 12 OF 12. Only text is touched, never markup. */
-  function numberTokens(html, n, of){
-    if (!/\{(n|of)\}/i.test(html)) return html;
+  /* Each label in a run gets its own number: {n} is that number, {nnn} the
+     same padded to three digits, {of} how many there are, {from} and {to} the
+     ends of the run, {page}/{pages} the sheet it lands on. Only text nodes are
+     rewritten, so markup and attributes are never touched. */
+  const TOKENS = /\{(n+|of|from|to|pages|page)\}/gi;
+  function fillTokens(html, vals){
+    if (!TOKENS.test(html)){ TOKENS.lastIndex = 0; return html; }
+    TOKENS.lastIndex = 0;
     const tpl = document.createElement("template");
     tpl.innerHTML = html;
     const walk = document.createTreeWalker(tpl.content, NodeFilter.SHOW_TEXT);
     let node;
-    while ((node = walk.nextNode()))
-      node.nodeValue = node.nodeValue.replace(/\{n\}/gi, n).replace(/\{of\}/gi, of);
+    while ((node = walk.nextNode())){
+      node.nodeValue = node.nodeValue.replace(TOKENS, (whole, key) => {
+        const k = key.toLowerCase();
+        if (/^n+$/.test(k)){
+          const t = String(Math.abs(vals.n)), sign = vals.n < 0 ? "-" : "";
+          return sign + (t.length >= k.length ? t : "0".repeat(k.length - t.length) + t);
+        }
+        return vals[k] === undefined ? whole : String(vals[k]);
+      });
+    }
     return tpl.innerHTML;
   }
 
@@ -2023,13 +2070,9 @@
     const out = [];
     allEntries().forEach((entry, idx) => {
       const d = entryData(entry);
-      for (let i = 0; i < d.copies; i++){
-        const copy = Object.assign({}, d, {
-          blocks: d.blocks.map(b =>
-            Object.assign({}, b, { html: numberTokens(b.html, i + 1, d.copies) }))
-        });
-        out.push({ d: copy, num: idx + 1 });
-      }
+      const first = d.numFrom, last = first + d.copies - 1;
+      for (let i = 0; i < d.copies; i++)
+        out.push({ d: d, num: idx + 1, seq: first + i, from: first, to: last });
     });
     return out;
   }
@@ -2112,13 +2155,17 @@
           pb.style.top    = (bl.y * 100) + "%";
           pb.style.width  = (bl.w * 100) + "%";
           pb.style.height = (bl.h * 100) + "%";
+          const html = fillTokens(bl.html, {
+            n: item.seq, of: item.d.copies, from: item.from, to: item.to,
+            page: p + 1, pages: pageTotal
+          });
           const content = document.createElement("div");
           content.className = "pcontent";
-          content.dataset.fitkey = bi + ":" + hashText(bl.html) + ":" +
+          content.dataset.fitkey = bi + ":" + hashText(html) + ":" +
             Math.round(bl.w*1000) + "x" + Math.round(bl.h*1000) + ":" + (bl.fontSize || "");
           content.style.fontSize = bl.fontSize || (sheet.font + "pt");
           if (bl.fontFamily) content.style.fontFamily = bl.fontFamily;
-          content.innerHTML = bl.html;
+          content.innerHTML = html;
           pb.appendChild(content);
           box.appendChild(pb);
         });

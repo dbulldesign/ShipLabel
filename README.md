@@ -53,8 +53,24 @@ The two combine: a sheet can be landscape and a label on it turned as well.
 pasted list or a CSV/TSV file — one label per line, blank lines separating
 multi-line addresses, or one label per spreadsheet row.
 
-**× copies** repeats a label. Put `{n}` and `{of}` in the text and each copy is
-numbered, so one entry set to 12 copies prints BOX 1 OF 12 through BOX 12 OF 12.
+**× copies** repeats a label, and **№ from → to** numbers the run. The three
+fields stay in step: set the quantity and the last number follows, set the last
+number and the quantity follows, change the first number and the whole run
+slides along — so numbering crates 101 to 112 is three keystrokes.
+
+Put these in the text of any box and each label gets its own:
+
+| Token | Gives |
+| --- | --- |
+| `{n}` | this label's number |
+| `{nnn}` | the same, padded — `001` |
+| `{of}` | how many labels in the run |
+| `{from}` / `{to}` | the first and last number |
+| `{page}` / `{pages}` | the sheet this label lands on |
+
+So `BOX {n} OF {to}` prints BOX 1 OF 12 for a run of 12, and BOX 101 OF 112 for
+a run numbered from 101. Tokens stay literal while you type and are filled in on
+the printed sheet.
 
 **▊ Barcode** and **▦ QR** put a real, scannable code on the label. Both are
 generated inside the page, so they work with no internet. Code 128 takes any
