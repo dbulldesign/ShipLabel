@@ -313,9 +313,8 @@
   .plabel.tiny .slot-num{display:none;}
   .testgrid .plabel.tiny .slot-num{display:block;}
   .testgrid .cut{border-color:#000;}
-  .testgrid .tick{
-    position:absolute; background:#000;
-  }
+  .testruler{position:absolute; inset:0; pointer-events:none;}
+  .testruler svg{display:block; width:100%; height:100%;}
   .plabel.tiny .overflow-flag{font-size:9px; padding:3px 5px;}
   .page-tag{
     position:absolute; bottom:-0px; right:6px;
@@ -570,6 +569,8 @@
     <span class="cb-title">Printer alignment (inches)</span>
     <label>Shift right <input id="nudgeX" type="number" step="0.01" value="0"></label>
     <label>Shift down <input id="nudgeY" type="number" step="0.01" value="0"></label>
+    <label>Size % <input id="nudgeS" type="number" step="0.1" min="80" max="120" value="100"
+      title="If the printed test grid measures short, the printer is scaling. Divide 100 by what you measured as a fraction — a 4in bar printing 3.84in needs 104.2."></label>
     <button id="testGridBtn" title="Print an outline of every label so you can hold it against a real sheet">🖨 Print test grid</button>
     <button id="resetNudge">Reset</button>
     <span class="cb-note" id="nudgeNote">Remembered per label type. Negative numbers shift the other way.</span>
@@ -621,7 +622,7 @@
   /* ================= Version =================
      Bump APP_VERSION whenever index.html changes — a running copy compares
      itself against the published one to spot that there is a newer build. */
-  const APP_VERSION = "1.0.0";
+  const APP_VERSION = "1.1.0";
   document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
   try { document.execCommand("styleWithCSS", false, true); } catch(e){}
@@ -797,11 +798,15 @@
     const sideways = orientation === "landscape";
     stockSel.value = stock.id;
     stockNote.textContent = stock.note + (sideways ? " · turned sideways" : "");
-    /* a roll printer only prints at the right size if its paper matches */
-    printHint.textContent = perPage() === 1
-      ? "Set the printer's paper to " + sheet.page[0] + " × " + sheet.page[1] +
-        "″ and scale to 100% — otherwise it prints small on a bigger sheet."
-      : "";
+    /* the commonest reason labels miss the die-cut is the print dialog, not
+       the page: default margins inset the sheet and "fit to printable area"
+       shrinks it, so the error grows the further down the sheet you go */
+    printHint.textContent =
+      (perPage() === 1
+        ? "Set the printer's paper to " + sheet.page[0] + " × " + sheet.page[1] + "″. "
+        : "") +
+      "In the print dialog set Scale to 100% (not “Fit to page”) and Margins to None, " +
+      "or every label drifts. ⇔ Align prints a grid you can measure against a real sheet.";
     customBar.hidden = stock.id !== "custom";
     portraitBtn.classList.toggle("is-on", !sideways);
     landscapeBtn.classList.toggle("is-on", sideways);
@@ -838,31 +843,39 @@
   const nudgeBtn  = document.getElementById("nudgeBtn");
   const nudgeXIn  = document.getElementById("nudgeX");
   const nudgeYIn  = document.getElementById("nudgeY");
+  const nudgeSIn  = document.getElementById("nudgeS");
   const NUDGE_KEY = "shiplabel.nudge.";
-  let nudge = { x:0, y:0 };
+  let nudge = { x:0, y:0, s:100 };
   let testGrid = false;
 
   /* kept per label type and per orientation, since the drift you are
      correcting depends on how the sheet goes through the printer */
   function nudgeKey(){ return NUDGE_KEY + stock.id + "." + orientation; }
   function loadNudge(){
-    nudge = { x:0, y:0 };
+    nudge = { x:0, y:0, s:100 };
     try {
       const raw = localStorage.getItem(nudgeKey());
-      if (raw){ const v = JSON.parse(raw); nudge = { x:(+v.x || 0), y:(+v.y || 0) }; }
+      if (raw){
+        const v = JSON.parse(raw);
+        nudge = { x:(+v.x || 0), y:(+v.y || 0), s:(+v.s > 0 ? +v.s : 100) };
+      }
     } catch(e){}
     nudgeXIn.value = nudge.x;
     nudgeYIn.value = nudge.y;
+    nudgeSIn.value = nudge.s;
   }
   function saveNudge(){
-    nudge = { x:(parseFloat(nudgeXIn.value) || 0), y:(parseFloat(nudgeYIn.value) || 0) };
+    const pct = parseFloat(nudgeSIn.value);
+    nudge = { x:(parseFloat(nudgeXIn.value) || 0), y:(parseFloat(nudgeYIn.value) || 0),
+              s:(pct > 0 ? pct : 100) };
     try { localStorage.setItem(nudgeKey(), JSON.stringify(nudge)); } catch(e){}
     queueRender();
   }
   nudgeXIn.addEventListener("input", saveNudge);
   nudgeYIn.addEventListener("input", saveNudge);
+  nudgeSIn.addEventListener("input", saveNudge);
   document.getElementById("resetNudge").addEventListener("click", () => {
-    nudgeXIn.value = 0; nudgeYIn.value = 0; saveNudge();
+    nudgeXIn.value = 0; nudgeYIn.value = 0; nudgeSIn.value = 100; saveNudge();
   });
   nudgeBtn.addEventListener("click", () => {
     nudgeBar.hidden = !nudgeBar.hidden;
@@ -876,6 +889,48 @@
   window.addEventListener("afterprint", () => {
     if (testGrid){ testGrid = false; render(); }
   });
+
+  /* A test sheet is only useful if it can be measured: as well as outlining
+     every label it carries inch rulers down two edges and a bar of a stated
+     length. If that bar measures short, the printer is scaling the page and
+     no amount of shifting will line the labels up. */
+  function testRulerSVG(wIn, hIn){
+    const W = Math.round(wIn * 100), H = Math.round(hIn * 100);   // hundredths of an inch
+    let marks = "", labels = "";
+    const tickRun = (len, horiz) => {
+      for (let i = 0; i * 0.125 <= len + 1e-9; i++){
+        const at = Math.round(i * 12.5);
+        const major = i % 8 === 0, half = i % 4 === 0;
+        const t = major ? 18 : half ? 11 : 6;
+        marks += horiz
+          ? '<line x1="' + at + '" y1="0" x2="' + at + '" y2="' + t + '"/>'
+          : '<line x1="0" y1="' + at + '" x2="' + t + '" y2="' + at + '"/>';
+        if (major && i)
+          labels += horiz
+            ? '<text x="' + (at + 3) + '" y="25">' + (i/8) + '</text>'
+            : '<text x="23" y="' + (at + 4) + '">' + (i/8) + '</text>';
+      }
+    };
+    tickRun(wIn, true);
+    tickRun(hIn, false);
+
+    const barIn = Math.max(0.5, Math.min(4, Math.floor((wIn - 0.5) * 2) / 2));
+    const bx = 25, by = Math.round(Math.min(100, hIn * 55));
+    const bw = Math.round(barIn * 100);
+    const bar =
+      '<line class="measbar" x1="' + bx + '" y1="' + by + '" x2="' + (bx + bw) + '" y2="' + by + '" stroke-width="2"/>' +
+      '<line x1="' + bx + '" y1="' + (by - 8) + '" x2="' + bx + '" y2="' + (by + 8) + '" stroke-width="2"/>' +
+      '<line x1="' + (bx + bw) + '" y1="' + (by - 8) + '" x2="' + (bx + bw) + '" y2="' + (by + 8) + '" stroke-width="2"/>';
+    const cap = '<text x="' + (bx + 4) + '" y="' + (by - 12) + '" font-size="11">' +
+                'this bar must measure ' + barIn + ' in</text>';
+
+    return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" ' +
+             'preserveAspectRatio="none">' +
+             '<g stroke="#000" stroke-width="1" fill="none">' + marks + bar + '</g>' +
+             '<g fill="#000" stroke="none" font-family="monospace" font-size="9">' +
+               labels + cap +
+             '</g></svg>';
+  }
 
   /* ---------- keep the work if the tab closes ---------- */
   const AUTOSAVE_KEY = "shiplabel.autosave";
@@ -2260,10 +2315,11 @@
         const row  = Math.floor(s / sheet.grid[0]);
         const lab = document.createElement("div");
         lab.className = "plabel";
-        lab.style.left   = (sheet.margin[0] + col*(sheet.size[0] + sheet.gutter[0]) + nudge.x) + "in";
-        lab.style.top    = (sheet.margin[1] + row*(sheet.size[1] + sheet.gutter[1]) + nudge.y) + "in";
-        lab.style.width  = sheet.size[0] + "in";
-        lab.style.height = sheet.size[1] + "in";
+        const gs = (nudge.s || 100) / 100;      // corrects a printer that scales
+        lab.style.left   = ((sheet.margin[0] + col*(sheet.size[0] + sheet.gutter[0])) * gs + nudge.x) + "in";
+        lab.style.top    = ((sheet.margin[1] + row*(sheet.size[1] + sheet.gutter[1])) * gs + nudge.y) + "in";
+        lab.style.width  = (sheet.size[0] * gs) + "in";
+        lab.style.height = (sheet.size[1] * gs) + "in";
         if (sheet.size[1] < 1.6) lab.classList.add("tiny");
         lab.innerHTML =
           '<span class="slot-num">' +
@@ -2302,6 +2358,13 @@
         });
         lab.appendChild(box);
         page.appendChild(lab);
+      }
+
+      if (testGrid){
+        const ruler = document.createElement("div");
+        ruler.className = "testruler";
+        ruler.innerHTML = testRulerSVG(sheet.page[0], sheet.page[1]);
+        page.appendChild(ruler);
       }
 
       pagesEl.appendChild(bar);

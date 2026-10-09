@@ -143,9 +143,24 @@ saved file is just the safer copy.
 **Start at** lets you finish a part-used sheet: set it to the first label still
 on the sheet and printing skips the ones already peeled off.
 
-**⇔ Align** shifts everything by hundredths of an inch to correct a printer that
-prints slightly off, remembered per label type and orientation. **Print test
-grid** puts the label outlines on paper so you can hold a real sheet against it.
+**Print at 100% with margins set to None.** This is the usual reason labels miss
+the die-cut: a print dialog left on "Fit to page" or default margins insets and
+shrinks the whole sheet, so every label drifts and the error grows the further
+down the page you go. The app prints each label to the exact thousandth of an
+inch; it cannot stop the dialog from rescaling that afterwards.
+
+**⇔ Align** corrects a printer that is still off. **Print test grid** puts the
+label outlines on paper along with inch rulers down two edges and a bar marked
+with its own length — print it on plain paper and measure:
+
+- the bar measures short (say 3.84″ where it claims 4″) → the printer is
+  scaling. Fix the dialog, or set **Size %** to 100 ÷ the fraction you measured
+  (3.84/4 → 104.2).
+- the bar is right but the outlines sit beside the die-cut → use **Shift right**
+  and **Shift down**.
+
+Both are remembered per label type and orientation, so calibrating a Dymo roll
+leaves your sheet stocks alone.
 
 
 
