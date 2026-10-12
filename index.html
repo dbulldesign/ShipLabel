@@ -366,6 +366,10 @@
     padding:2px 2px 0;
   }
   .printhint:empty{display:none;}
+  .printhint.testing{
+    background:var(--accent); color:var(--accent-ink);
+    border-radius:7px; padding:6px 10px; font-weight:700;
+  }
   .custombar .cb-check{gap:6px;}
   #importText{
     flex:1 0 100%; min-height:104px; resize:vertical;
@@ -449,6 +453,7 @@
 
   <div class="group" aria-label="Sheet tools">
     <button id="nudgeBtn" title="Shift everything a hair to line up with your printer">⇔ Align</button>
+    <button id="testGridBtn" title="Show a measuring sheet — every label outlined, with inch rulers and a bar of known length. Print it on plain paper and hold it against a real sheet.">⊞ Test grid</button>
     <button id="importBtn" title="Make labels in bulk from a pasted list or a CSV file">📋 Import</button>
     <button id="newBtn" title="Clear everything and start a fresh sheet">🗑 New</button>
   </div>
@@ -571,9 +576,8 @@
     <label>Shift down <input id="nudgeY" type="number" step="0.01" value="0"></label>
     <label>Size % <input id="nudgeS" type="number" step="0.1" min="80" max="120" value="100"
       title="If the printed test grid measures short, the printer is scaling. Divide 100 by what you measured as a fraction — a 4in bar printing 3.84in needs 104.2."></label>
-    <button id="testGridBtn" title="Print an outline of every label so you can hold it against a real sheet">🖨 Print test grid</button>
     <button id="resetNudge">Reset</button>
-    <span class="cb-note" id="nudgeNote">Remembered per label type. Negative numbers shift the other way.</span>
+    <span class="cb-note" id="nudgeNote">Remembered per label type and orientation. Use ⊞ Test grid above to print a sheet you can measure.</span>
   </div>
 </header>
 
@@ -622,7 +626,7 @@
   /* ================= Version =================
      Bump APP_VERSION whenever index.html changes — a running copy compares
      itself against the published one to spot that there is a newer build. */
-  const APP_VERSION = "1.1.0";
+  const APP_VERSION = "1.2.0";
   document.getElementById("appVer").textContent = "v" + APP_VERSION;
 
   try { document.execCommand("styleWithCSS", false, true); } catch(e){}
@@ -798,15 +802,7 @@
     const sideways = orientation === "landscape";
     stockSel.value = stock.id;
     stockNote.textContent = stock.note + (sideways ? " · turned sideways" : "");
-    /* the commonest reason labels miss the die-cut is the print dialog, not
-       the page: default margins inset the sheet and "fit to printable area"
-       shrinks it, so the error grows the further down the sheet you go */
-    printHint.textContent =
-      (perPage() === 1
-        ? "Set the printer's paper to " + sheet.page[0] + " × " + sheet.page[1] + "″. "
-        : "") +
-      "In the print dialog set Scale to 100% (not “Fit to page”) and Margins to None, " +
-      "or every label drifts. ⇔ Align prints a grid you can measure against a real sheet.";
+    updatePrintHint();
     customBar.hidden = stock.id !== "custom";
     portraitBtn.classList.toggle("is-on", !sideways);
     landscapeBtn.classList.toggle("is-on", sideways);
@@ -837,6 +833,26 @@
     return n >= 2 ? Math.min(n, perPage()) - 1 : 0;
   }
   startSlotInput.addEventListener("input", queueRender);
+
+  /* the commonest reason labels miss the die-cut is the print dialog, not the
+     page: default margins inset the sheet and "fit to printable area" shrinks
+     it, so the error grows the further down the sheet you go */
+  function updatePrintHint(){
+    if (testGrid){
+      printHint.className = "printhint testing";
+      printHint.textContent =
+        "⊞ Test grid is on — printing now gives the measuring sheet, not your labels. " +
+        "Put plain paper in, print it, then check the bar's length and lay it over a real sheet.";
+      return;
+    }
+    printHint.className = "printhint";
+    printHint.textContent =
+      (perPage() === 1
+        ? "Set the printer's paper to " + sheet.page[0] + " × " + sheet.page[1] + "″. "
+        : "") +
+      "In the print dialog set Scale to 100% (not “Fit to page”) and Margins to None, " +
+      "or every label drifts. ⊞ Test grid prints a sheet you can measure against a real one.";
+  }
 
   /* ---------- printer alignment ---------- */
   const nudgeBar  = document.getElementById("nudgeBar");
@@ -881,14 +897,18 @@
     nudgeBar.hidden = !nudgeBar.hidden;
     nudgeBtn.classList.toggle("is-on", !nudgeBar.hidden);
   });
-  document.getElementById("testGridBtn").addEventListener("click", () => {
-    testGrid = true;
+  /* A toggle rather than an instant print: you get to look at the sheet
+     first, and Print then behaves normally. It switches itself off once
+     printed so a real run can't go out with rulers across it. */
+  const testGridBtn = document.getElementById("testGridBtn");
+  function setTestGrid(on){
+    testGrid = !!on;
+    testGridBtn.classList.toggle("is-on", testGrid);
     render();
-    setTimeout(() => printPages(new Set([1])), 150);
-  });
-  window.addEventListener("afterprint", () => {
-    if (testGrid){ testGrid = false; render(); }
-  });
+    updatePrintHint();
+  }
+  testGridBtn.addEventListener("click", () => setTestGrid(!testGrid));
+  window.addEventListener("afterprint", () => { if (testGrid) setTestGrid(false); });
 
   /* A test sheet is only useful if it can be measured: as well as outlining
      every label it carries inch rulers down two edges and a bar of a stated
@@ -2122,6 +2142,7 @@
     ctxItem("Portrait",  () => setOrientation("portrait"),  { on: orientation !== "landscape" });
     ctxItem("Landscape", () => setOrientation("landscape"), { on: orientation === "landscape" });
     ctxSep();
+    ctxItem("Test grid", () => setTestGrid(!testGrid), { on: testGrid });
     ctxItem("Printer alignment…", () => {
       nudgeBar.hidden = false;
       nudgeBtn.classList.add("is-on");

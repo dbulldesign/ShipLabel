@@ -149,9 +149,11 @@ shrinks the whole sheet, so every label drifts and the error grows the further
 down the page you go. The app prints each label to the exact thousandth of an
 inch; it cannot stop the dialog from rescaling that afterwards.
 
-**⇔ Align** corrects a printer that is still off. **Print test grid** puts the
-label outlines on paper along with inch rulers down two edges and a bar marked
-with its own length — print it on plain paper and measure:
+**⊞ Test grid** (on the toolbar) turns the preview into a measuring sheet: every
+label outlined, inch rulers down two edges, and a bar marked with its own
+length. Print it on plain paper and measure. It switches itself off once
+printed, so a real run can't go out with rulers across it. **⇔ Align** corrects
+a printer that is still off:
 
 - the bar measures short (say 3.84″ where it claims 4″) → the printer is
   scaling. Fix the dialog, or set **Size %** to 100 ÷ the fraction you measured
